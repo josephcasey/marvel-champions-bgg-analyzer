@@ -1,0 +1,157 @@
+# Marvel Champions BGG Data Analyzer
+
+A comprehensive Python tool for analyzing Marvel Champions: The Card Game play data from BoardGameGeek (BGG). This script extracts hero usage statistics, handles multi-language translations, and provides detailed debugging information for data quality analysis.
+
+## 🎯 Features
+
+- **Multi-language Support**: Automatically translates hero names from Spanish and Chinese to English
+- **Hero Name Disambiguation**: Uses fuzzy matching and official hero lists for accurate identification
+- **Comprehensive Analysis**: Tracks successful matches, translations, and skipped plays with detailed reasons
+- **Color-coded Output**: Easy-to-read terminal output with status indicators
+- **Data Quality Insights**: Detailed XML debugging information for troubleshooting BGG data issues
+- **Villain/Scenario Filtering**: Automatically excludes non-hero entries from statistics
+
+## 📊 What It Analyzes
+
+### Hero Usage Statistics
+- Individual hero play counts
+- Translation success rates
+- Official hero list matching rates
+- Geographic distribution of play styles (via language detection)
+
+### Skipped Plays Analysis
+- Plays with missing player data
+- Players with empty color/team fields
+- Meaningless names after cleaning
+- Translation errors and their reasons
+- Full XML debugging information for each category
+
+## 🚀 Quick Start
+
+### Prerequisites
+- Python 3.8+
+- Internet connection (for BGG API and Google Translate)
+
+### Installation
+
+1. Clone this repository:
+```bash
+git clone <repository-url>
+cd marvel-champions-bgg-analyzer
+```
+
+2. Create and activate virtual environment:
+```bash
+python3 -m venv .venv
+source .venv/bin/activate  # On macOS/Linux
+# or
+.venv\Scripts\activate     # On Windows
+```
+
+3. Install dependencies:
+```bash
+pip install -r requirements.txt
+```
+
+### Usage
+
+```bash
+# Activate virtual environment
+source .venv/bin/activate
+
+# Run the analyzer
+python3 bggscrape.py
+```
+
+## 📈 Sample Output
+
+```
+✅ Loaded 61 official hero names
+🔍 Fetching recent plays to find active users...
+👥 Found 58 users in recent plays
+
+🎯 Hero usage analysis for user 348019:
+ 1. Phoenix                5 plays [TRANSLATED, OFFICIAL]
+ 2. Ant Man                3 plays [OFFICIAL]
+ 3. Spidey                 3 plays [OFFICIAL]
+
+📊 Summary Statistics:
+- Total hero plays analyzed: 39
+- ✅ Official matches: 39 (100.0%)
+- 🔄 Translated plays: 8 (20.5%)
+- ❌ Unmatched plays: 0 (0.0%)
+
+🚫 Skipped Plays Analysis (98 total):
+   📋 No Players: 37 plays
+   📋 Empty Color: 43 plays
+   📋 Meaningless Names: 13 plays
+   📋 Translation Errors: 5 plays
+```
+
+## 🔧 Configuration
+
+### Hero Name Translation
+The script includes manual translation mappings for common hero names in:
+- **Spanish**: Halcón → Falcon, Soldado de invierno → Winter Soldier
+- **Chinese**: 凤凰女 → Phoenix, 钢铁侠 → Iron Man
+
+### Official Hero List
+The script automatically loads the official hero list from GitHub:
+```
+https://github.com/josephcasey/mybgg/raw/refs/heads/master/cached_hero_names.json
+```
+
+## 📁 Project Structure
+
+```
+marvel-champions-bgg-analyzer/
+├── bggscrape.py           # Main analysis script
+├── requirements.txt       # Python dependencies
+├── README.md             # This file
+├── .venv/                # Virtual environment (not committed)
+├── .github/              # GitHub configuration
+│   ├── workflows/        # GitHub Actions
+│   └── dependabot.yml    # Dependency management
+└── .gitignore            # Git ignore rules
+```
+
+## 🤝 Contributing
+
+This project was developed with GitHub Copilot assistance. Feel free to:
+- Report issues with BGG data parsing
+- Add support for additional languages
+- Improve hero name disambiguation
+- Enhance data visualization
+
+## 📄 License
+
+This project is open source. Please respect BoardGameGeek's API terms of service when using this tool.
+
+## 🙏 Acknowledgments
+
+- **BoardGameGeek** for providing the game data API
+- **GitHub Copilot** for development assistance
+- **Marvel Champions community** for maintaining comprehensive hero lists
+- **Google Translate API** for multi-language support
+
+## 🔍 Technical Details
+
+### Dependencies
+- `requests`: BGG API communication
+- `googletrans`: Multi-language translation
+- `xml.etree.ElementTree`: XML parsing
+- `json`: Official hero list processing
+- `re`: Text pattern matching and cleaning
+
+### Data Sources
+- BGG XML API v2 for play data
+- Official Marvel Champions hero names from community-maintained lists
+- Manual translation mappings for common non-English entries
+
+### Analysis Methodology
+1. Fetch recent plays from BGG API
+2. Extract hero names from player color/team fields
+3. Clean and normalize hero names
+4. Translate non-English entries
+5. Match against official hero lists using fuzzy matching
+6. Generate comprehensive statistics and debugging output
