@@ -155,3 +155,18 @@ This project is open source. Please respect BoardGameGeek's API terms of service
 4. Translate non-English entries
 5. Match against official hero lists using fuzzy matching
 6. Generate comprehensive statistics and debugging output
+
+## 📈 Recent Improvements
+
+### GitHub Workflow Cleanup (Jun 21, 2025) (Latest)
+- 🧹 **Removed failing Algolia workflow** - Eliminated problematic `.github/workflows/index.yml` that was causing hourly GitHub Actions failures
+- 🔧 **Repository cleanup** - Removed dependencies on non-existent `scripts/download_and_index.py` and `scripts/requirements.txt`
+- ✅ **Improved stability** - No more failed workflow notifications, cleaner repository status
+- 🎯 **Focus on core functionality** - Repository now focuses solely on BGG data analysis without external indexing dependencies
+
+### Update Deployment Workflow Automation (Jun 20, 2025) - `8e9a287`
+- 🚀 **Agent-driven deployment** - Implemented `/deploy` and `/test` command automation using agent rules
+- 🔧 **Streamlined workflows** - Created comprehensive test and deployment scripts with Python environment validation
+- 📝 **Documentation integration** - Automated README updates as part of deployment process
+- 🐍 **Python-specific checks** - BGG API connectivity testing, dependency validation, and code quality checks
+- 🎨 **Enhanced output** - Color-coded terminal output for better development experience on macOS
