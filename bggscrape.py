@@ -37,6 +37,9 @@ def status_colored_print(original, translated, status_info):
     else:
         colored_print(f"  ❌ Unmatched: '{original}' → '{translated}'", Colors.RED)
 
+# Configuration for debug output
+TERMINAL_DEBUG = True  # Set to True to enable detailed XML dumps and verbose output
+
 # Load official hero names from the GitHub repository
 def load_official_hero_names():
     """Load the official hero names list from GitHub"""
@@ -61,21 +64,90 @@ def load_official_hero_names():
         print(f"Error loading official hero names: {e}")
         return [], {}
 
-# Load the official hero names
+# Load official villain names from the GitHub repository
+def load_official_villain_names():
+    """Load the official villain names list from GitHub"""
+    try:
+        url = "https://github.com/josephcasey/mybgg/raw/refs/heads/master/cached_villain_names.json"
+        response = requests.get(url)
+        response.raise_for_status()
+        villain_names = json.loads(response.text)
+        
+        # Create a normalized lookup dict for villain detection
+        normalized_villains = {}
+        for villain in villain_names:
+            # Store both the original and various normalized versions
+            villain_lower = villain.lower()
+            normalized_villains[villain_lower] = villain
+            normalized_villains[villain_lower.replace('-', ' ')] = villain
+            normalized_villains[villain_lower.replace('.', '')] = villain
+            normalized_villains[villain_lower.replace(' ', '')] = villain
+            normalized_villains[villain_lower.replace('-', '').replace('.', '').replace(' ', '')] = villain
+            # Also handle common villain name patterns
+            if ' 1/' in villain_lower or ' 2/' in villain_lower or ' a' == villain_lower[-2:]:
+                base_name = villain_lower.split(' ')[0]
+                normalized_villains[base_name] = villain
+            
+        return villain_names, normalized_villains
+    except Exception as e:
+        print(f"Error loading official villain names: {e}")
+        return [], {}
+
+def is_villain_name(name):
+    """Check if a name matches known villains"""
+    if not name:
+        return False
+    
+    normalized = name.lower().strip()
+    
+    # Check against villain list
+    if normalized in VILLAIN_LOOKUP:
+        return True
+    
+    # Check for common villain patterns
+    villain_patterns = [
+        'vs ', ' vs', 'versus',
+        'villain', 'boss', 'enemy',
+        'scenario', 'campaign', 'mission'
+    ]
+    
+    for pattern in villain_patterns:
+        if pattern in normalized:
+            return True
+    
+    return False
+
+# Load the official hero and villain names
 OFFICIAL_HEROES, HERO_LOOKUP = load_official_hero_names()
+OFFICIAL_VILLAINS, VILLAIN_LOOKUP = load_official_villain_names()
 colored_print(f"✅ Loaded {len(OFFICIAL_HEROES)} official hero names", Colors.GREEN)
+colored_print(f"✅ Loaded {len(OFFICIAL_VILLAINS)} official villain names", Colors.GREEN)
 
 def match_to_official_hero(hero_name):
-    """Match a hero name to the official hero list"""
+    """Match a hero name to the official hero list, including AH (Altered Heroes) handling"""
     if not hero_name:
-        return None, False, False
+        return None, False, False, False
     
-    # Try exact match first
-    if hero_name in OFFICIAL_HEROES:
-        return hero_name, True, False
+    # Check for AH (Altered Heroes) convention first
+    is_altered = False
+    base_name = hero_name
+    if hero_name.lower().startswith('ah - ') or hero_name.lower().startswith('ah-'):
+        is_altered = True
+        # Extract the base hero name from "AH - Hero" or "AH-Hero"
+        if ' - ' in hero_name:
+            base_name = hero_name.split(' - ', 1)[1].strip()
+        elif hero_name.lower().startswith('ah-'):
+            base_name = hero_name[3:].strip()
+        
+        if TERMINAL_DEBUG:
+            colored_print(f"  🔄 Altered Hero detected: '{hero_name}' → base: '{base_name}'", Colors.BLUE)
+    
+    # Try exact match first (on base name for AH heroes)
+    if base_name in OFFICIAL_HEROES:
+        return base_name, True, False, is_altered
     
     # Try normalized matches
-    normalized = hero_name.lower().strip()
+    normalized = base_name.lower().strip()
     
     # Handle common hero name variations
     hero_normalizations = {
@@ -101,12 +173,20 @@ def match_to_official_hero(hero_name):
         # Captain variants
         'captain america': 'captain america',
         'captain marvel': 'captain marvel',
+        'cap marvel': 'captain marvel',  # Captain Marvel nickname
+        'capmarv': 'captain marvel',     # Captain Marvel abbreviation
         # Wolverine variants
         'wolverine': 'wolverine',
         'wolvie': 'wolverine',
+        # Black Panther variants
+        'black panther': 'black panther',
+        'panther': 'black panther',      # Black Panther nickname
         # Nick Fury variants
         'nickfury': 'nick fury',
         'nick fury': 'nick fury',
+        # Drax variants
+        'drax': 'drax',
+        'drax the destroyer': 'drax',
         # Other heroes that might be missing
         'falcon': 'falcon',
         'adam warlock': 'adam warlock',
@@ -132,7 +212,7 @@ def match_to_official_hero(hero_name):
     for variation in variations:
         if variation in HERO_LOOKUP:
             official_name = HERO_LOOKUP[variation]
-            return official_name, True, variation != normalized
+            return official_name, True, variation != normalized, is_altered
     
     # Special handling for heroes we know should match but aren't in the official list
     # These might be newer heroes or need to be added to the GitHub list
@@ -141,6 +221,9 @@ def match_to_official_hero(hero_name):
         'adam warlock': 'Adam Warlock', 
         'spectrum': 'Spectrum',
         'miles morales': 'Miles Morales',
+        'black panther': 'Black Panther',
+        'captain marvel': 'Captain Marvel',
+        'drax': 'Drax',
         # Handle Spider-Man variants that should all be treated as the same character
         'spidey': 'Spider-Man',  # Use the most common name
         'spider-man': 'Spider-Man',
@@ -148,16 +231,22 @@ def match_to_official_hero(hero_name):
     }
     
     if normalized in known_heroes:
-        colored_print(f"  🔧 Known hero not in official list: '{hero_name}' → '{known_heroes[normalized]}'", Colors.BLUE)
-        return known_heroes[normalized], True, True
+        colored_print(f"  🔧 Known hero not in official list: '{base_name}' → '{known_heroes[normalized]}'", Colors.BLUE)
+        return known_heroes[normalized], True, True, is_altered
     
     # No match found
-    return hero_name, False, False
+    return base_name, False, False, is_altered
 
 def translate_hero_name(hero_name):
-    """Translate non-English hero names to English"""
+    """Translate non-English hero names to English and filter out villains"""
     if not hero_name or not hero_name.strip():
         return hero_name, False
+    
+    # First check if this is a known villain - if so, mark for filtering
+    if is_villain_name(hero_name):
+        if TERMINAL_DEBUG:
+            colored_print(f"  🦹 Villain detected: '{hero_name}' - filtering out", Colors.MAGENTA)
+        return None, False  # Return None to indicate this should be filtered
     
     was_translated = False
     
@@ -329,7 +418,10 @@ def extract_hero_mentions(root):
         for match in matches:
             normalized = match.lower()
             hero_counts[normalized] = hero_counts.get(normalized, 0) + 1
-    return pd.DataFrame(hero_counts.items(), columns=["hero_name", "mention_count"]).sort_values("mention_count", ascending=False)
+    # Convert to list of dictionaries and sort by count
+    results = [{"hero_name": hero, "mention_count": count} for hero, count in hero_counts.items()]
+    results.sort(key=lambda x: x["mention_count"], reverse=True)
+    return results
 
 def extract_hero_names_from_plays(plays_list):
     """Extract hero names from the color field in player data and translate to English"""
@@ -367,27 +459,145 @@ def extract_hero_names_from_plays(plays_list):
         
         players = play.find("players")
         if players is None:
-            # Track plays with no players element
-            skipped_plays['no_players'].append({
-                'play_id': play_id,
-                'play_date': play_date,
-                'userid': userid,
-                'comments': comments,
-                'reason': 'No players element found'
-            })
-            continue
+            # Try to extract hero names from comments before giving up
+            heroes_from_comments = parse_heroes_from_comments(comments, play_id)
+            
+            if heroes_from_comments:
+                # Found heroes in comments! Process each one
+                if TERMINAL_DEBUG:
+                    colored_print(f"\n🔍 RECOVERED - Found Heroes in Comments (No Players Element):", Colors.GREEN)
+                    colored_print(f"   Play ID: {play_id} | Date: {play_date}", Colors.CYAN)
+                    colored_print(f"   No players element, but heroes from comments: {[h['matched'] for h in heroes_from_comments]}", Colors.GREEN)
+                    if comments:
+                        colored_print(f"   Comments: {comments[:200]}...", Colors.CYAN)
+                
+                # Process each hero found in comments
+                for hero_data in heroes_from_comments:
+                    hero_name = hero_data['matched']
+                    
+                    # Determine status based on how it was matched
+                    if hero_data['is_altered']:
+                        status = 'ALTERED_HERO|OFFICIAL|FROM_COMMENTS|NO_PLAYERS'
+                    elif hero_data['is_official']:
+                        status = 'OFFICIAL|FROM_COMMENTS|NO_PLAYERS'
+                    elif hero_data['is_fuzzy']:
+                        status = 'OFFICIAL|FUZZY_MATCHED|FROM_COMMENTS|NO_PLAYERS'
+                    else:
+                        status = 'FROM_COMMENTS|NO_PLAYERS'
+                    
+                    # Add to results
+                    if hero_name in hero_counts:
+                        hero_counts[hero_name]['count'] += 1
+                        hero_counts[hero_name]['status'].add(status)
+                    else:
+                        hero_counts[hero_name] = {
+                            'count': 1, 
+                            'status': {status},
+                            'is_altered': hero_data['is_altered']
+                        }
+                    
+                    if TERMINAL_DEBUG:
+                        status_colored_print(hero_data['original'], hero_name, status)
+                
+                # Don't skip this record since we found heroes, but mark it as having heroes without players
+                plays_with_players += 1  # Count as having usable data even though no structured players
+                continue
+            else:
+                # Track plays with no players element and no heroes in comments
+                if TERMINAL_DEBUG:
+                    colored_print(f"\n🚫 SKIPPED - No Players Element:", Colors.MAGENTA)
+                    colored_print(f"   Play ID: {play_id} | Date: {play_date}", Colors.CYAN)
+                    colored_print(f"   Raw Play XML:", Colors.YELLOW)
+                    play_xml_str = ET.tostring(play, encoding='unicode', method='xml')
+                    colored_print(f"   {play_xml_str[:500]}...", Colors.YELLOW)  # First 500 chars
+                    if comments:
+                        colored_print(f"   📄 FULL COMMENTS:", Colors.CYAN)
+                        colored_print(f"   {comments}", Colors.CYAN)
+                    else:
+                        colored_print(f"   📄 No comments in this play", Colors.CYAN)
+                    colored_print(f"   📝 No heroes found in comments either", Colors.RED)
+                    colored_print(f"   🔗 BGG Play Link: https://boardgamegeek.com/play/{play_id}", Colors.BLUE)
+                
+                skipped_plays['no_players'].append({
+                    'play_id': play_id,
+                    'play_date': play_date,
+                    'userid': userid,
+                    'comments': comments,
+                    'full_xml': ET.tostring(play, encoding='unicode', method='xml'),
+                    'reason': 'No players element found, no heroes in comments'
+                })
+                continue
             
         player_list = players.findall("player")
         if len(player_list) == 0:
-            # Track plays with empty players list
-            skipped_plays['no_players'].append({
-                'play_id': play_id,
-                'play_date': play_date,
-                'userid': userid,
-                'comments': comments,
-                'reason': 'Empty players list'
-            })
-            continue
+            # Try to extract hero names from comments before giving up
+            heroes_from_comments = parse_heroes_from_comments(comments, play_id)
+            
+            if heroes_from_comments:
+                # Found heroes in comments! Process each one
+                if TERMINAL_DEBUG:
+                    colored_print(f"\n🔍 RECOVERED - Found Heroes in Comments (Empty Players List):", Colors.GREEN)
+                    colored_print(f"   Play ID: {play_id} | Date: {play_date}", Colors.CYAN)
+                    colored_print(f"   Empty players list, but heroes from comments: {[h['matched'] for h in heroes_from_comments]}", Colors.GREEN)
+                    if comments:
+                        colored_print(f"   Comments: {comments[:200]}...", Colors.CYAN)
+                
+                # Process each hero found in comments
+                for hero_data in heroes_from_comments:
+                    hero_name = hero_data['matched']
+                    
+                    # Determine status based on how it was matched
+                    if hero_data['is_altered']:
+                        status = 'ALTERED_HERO|OFFICIAL|FROM_COMMENTS|EMPTY_PLAYERS'
+                    elif hero_data['is_official']:
+                        status = 'OFFICIAL|FROM_COMMENTS|EMPTY_PLAYERS'
+                    elif hero_data['is_fuzzy']:
+                        status = 'OFFICIAL|FUZZY_MATCHED|FROM_COMMENTS|EMPTY_PLAYERS'
+                    else:
+                        status = 'FROM_COMMENTS|EMPTY_PLAYERS'
+                    
+                    # Add to results
+                    if hero_name in hero_counts:
+                        hero_counts[hero_name]['count'] += 1
+                        hero_counts[hero_name]['status'].add(status)
+                    else:
+                        hero_counts[hero_name] = {
+                            'count': 1, 
+                            'status': {status},
+                            'is_altered': hero_data['is_altered']
+                        }
+                    
+                    if TERMINAL_DEBUG:
+                        status_colored_print(hero_data['original'], hero_name, status)
+                
+                # Don't skip this record since we found heroes
+                plays_with_players += 1  # Count as having usable data
+                continue
+            else:
+                # Track plays with empty players list and no heroes in comments
+                if TERMINAL_DEBUG:
+                    colored_print(f"\n🚫 SKIPPED - Empty Players List:", Colors.MAGENTA)
+                    colored_print(f"   Play ID: {play_id} | Date: {play_date}", Colors.CYAN)
+                    colored_print(f"   Players Element XML:", Colors.YELLOW)
+                    players_xml_str = ET.tostring(players, encoding='unicode', method='xml')
+                    colored_print(f"   {players_xml_str}", Colors.YELLOW)
+                    if comments:
+                        colored_print(f"   📄 FULL COMMENTS:", Colors.CYAN)
+                        colored_print(f"   {comments}", Colors.CYAN)
+                    else:
+                        colored_print(f"   📄 No comments in this play", Colors.CYAN)
+                    colored_print(f"   📝 No heroes found in comments either", Colors.RED)
+                    colored_print(f"   🔗 BGG Play Link: https://boardgamegeek.com/play/{play_id}", Colors.BLUE)
+                
+                skipped_plays['no_players'].append({
+                    'play_id': play_id,
+                    'play_date': play_date,
+                    'userid': userid,
+                    'comments': comments,
+                    'full_xml': ET.tostring(players, encoding='unicode', method='xml'),
+                    'reason': 'Empty players list, no heroes in comments'
+                })
+                continue
             
         plays_with_players += 1
         total_players += len(player_list)
@@ -395,35 +605,157 @@ def extract_hero_names_from_plays(plays_list):
         for player in player_list:
             color = player.get("color", "").strip()
             if not color:
-                # Track players with empty color field
-                skipped_plays['empty_color'].append({
-                    'play_id': play_id,
-                    'play_date': play_date,
-                    'userid': userid,
-                    'comments': comments,
-                    'player_xml': player.attrib,
-                    'reason': 'Empty color field'
-                })
-                continue
+                # Try to extract hero names from comments before giving up
+                heroes_from_comments = parse_heroes_from_comments(comments, play_id)
+                
+                if heroes_from_comments:
+                    # Found heroes in comments! Process each one
+                    if TERMINAL_DEBUG:
+                        colored_print(f"\n🔍 RECOVERED - Found Heroes in Comments (Empty Color):", Colors.GREEN)
+                        colored_print(f"   Play ID: {play_id} | Date: {play_date}", Colors.CYAN)
+                        colored_print(f"   Empty color field, but heroes from comments: {[h['matched'] for h in heroes_from_comments]}", Colors.GREEN)
+                        if comments:
+                            colored_print(f"   Comments: {comments[:200]}...", Colors.CYAN)
+                    
+                    # Process each hero found in comments
+                    for hero_data in heroes_from_comments:
+                        hero_name = hero_data['matched']
+                        
+                        # Determine status based on how it was matched
+                        if hero_data['is_altered']:
+                            status = 'ALTERED_HERO|OFFICIAL|FROM_COMMENTS|EMPTY_COLOR'
+                        elif hero_data['is_official']:
+                            status = 'OFFICIAL|FROM_COMMENTS|EMPTY_COLOR'
+                        elif hero_data['is_fuzzy']:
+                            status = 'OFFICIAL|FUZZY_MATCHED|FROM_COMMENTS|EMPTY_COLOR'
+                        else:
+                            status = 'FROM_COMMENTS|EMPTY_COLOR'
+                        
+                        # Add to results
+                        if hero_name in hero_counts:
+                            hero_counts[hero_name]['count'] += 1
+                            hero_counts[hero_name]['status'].add(status)
+                        else:
+                            hero_counts[hero_name] = {
+                                'count': 1, 
+                                'status': {status},
+                                'is_altered': hero_data['is_altered']
+                            }
+                        
+                        if TERMINAL_DEBUG:
+                            status_colored_print(hero_data['original'], hero_name, status)
+                    
+                    # Don't skip this record since we found heroes
+                    continue
+                else:
+                    # Track players with empty color field and no heroes in comments
+                    if TERMINAL_DEBUG:
+                        colored_print(f"\n🚫 SKIPPED - Empty Color Field:", Colors.MAGENTA)
+                        colored_print(f"   Play ID: {play_id} | Date: {play_date}", Colors.CYAN)
+                        colored_print(f"   Raw Player XML:", Colors.YELLOW)
+                        # Convert player element to string for full XML dump
+                        player_xml_str = ET.tostring(player, encoding='unicode', method='xml')
+                        colored_print(f"   {player_xml_str}", Colors.YELLOW)
+                        colored_print(f"   Player Attributes: {player.attrib}", Colors.CYAN)
+                        if comments:
+                            colored_print(f"   📄 FULL COMMENTS:", Colors.CYAN)
+                            colored_print(f"   {comments}", Colors.CYAN)
+                        else:
+                            colored_print(f"   📄 No comments in this play", Colors.CYAN)
+                        colored_print(f"   📝 No heroes found in comments either", Colors.RED)
+                        colored_print(f"   🔗 BGG Play Link: https://boardgamegeek.com/play/{play_id}", Colors.BLUE)
+                    
+                    skipped_plays['empty_color'].append({
+                        'play_id': play_id,
+                        'play_date': play_date,
+                        'userid': userid,
+                        'comments': comments,
+                        'player_xml': player.attrib,
+                        'full_xml': ET.tostring(player, encoding='unicode', method='xml'),
+                        'reason': 'Empty color field, no heroes in comments'
+                    })
+                    continue
                 
             total_players_with_color += 1
             
             # Clean up the hero name (remove extra info like aspects, team numbers, etc.)
             cleaned_name = clean_hero_name(color)
             
-            # Skip empty or meaningless names
+            # Skip empty or meaningless names, but first try to parse from comments
             if not cleaned_name:
-                skipped_plays['meaningless_names'].append({
-                    'play_id': play_id,
-                    'play_date': play_date,
-                    'userid': userid,
-                    'comments': comments,
-                    'original_color': color,
-                    'cleaned_name': cleaned_name,
-                    'player_xml': player.attrib,
-                    'reason': 'Meaningless name after cleaning'
-                })
-                continue
+                # Try to extract hero names from comments before giving up
+                heroes_from_comments = parse_heroes_from_comments(comments, play_id)
+                
+                if heroes_from_comments:
+                    # Found heroes in comments! Process each one
+                    if TERMINAL_DEBUG:
+                        colored_print(f"\n🔍 RECOVERED - Found Heroes in Comments:", Colors.GREEN)
+                        colored_print(f"   Play ID: {play_id} | Date: {play_date}", Colors.CYAN)
+                        colored_print(f"   Original Color: '{color}' (meaningless)", Colors.YELLOW)
+                        colored_print(f"   Heroes from comments: {[h['matched'] for h in heroes_from_comments]}", Colors.GREEN)
+                        if comments:
+                            colored_print(f"   Comments: {comments[:200]}...", Colors.CYAN)
+                    
+                    # Process each hero found in comments
+                    for hero_data in heroes_from_comments:
+                        hero_name = hero_data['matched']
+                        
+                        # Determine status based on how it was matched
+                        if hero_data['is_altered']:
+                            status = 'ALTERED_HERO|OFFICIAL|FROM_COMMENTS'
+                        elif hero_data['is_official']:
+                            status = 'OFFICIAL|FROM_COMMENTS'
+                        elif hero_data['is_fuzzy']:
+                            status = 'OFFICIAL|FUZZY_MATCHED|FROM_COMMENTS'
+                        else:
+                            status = 'FROM_COMMENTS'
+                        
+                        # Add to results
+                        if hero_name in hero_counts:
+                            hero_counts[hero_name]['count'] += 1
+                            hero_counts[hero_name]['status'].add(status)
+                        else:
+                            hero_counts[hero_name] = {
+                                'count': 1, 
+                                'status': {status},
+                                'is_altered': hero_data['is_altered']
+                            }
+                        
+                        if TERMINAL_DEBUG:
+                            status_colored_print(hero_data['original'], hero_name, status)
+                    
+                    # Don't skip this record since we found heroes
+                    continue
+                else:
+                    # No heroes found in comments either, skip as meaningless
+                    if TERMINAL_DEBUG:
+                        colored_print(f"\n🚫 SKIPPED - Meaningless Name:", Colors.MAGENTA)
+                        colored_print(f"   Play ID: {play_id} | Date: {play_date}", Colors.CYAN)
+                        colored_print(f"   Original Color: '{color}'", Colors.YELLOW)
+                        colored_print(f"   Cleaned Name: '{cleaned_name}'", Colors.YELLOW)
+                        colored_print(f"   Raw Player XML:", Colors.YELLOW)
+                        player_xml_str = ET.tostring(player, encoding='unicode', method='xml')
+                        colored_print(f"   {player_xml_str}", Colors.YELLOW)
+                        if comments:
+                            colored_print(f"   📄 FULL COMMENTS:", Colors.CYAN)
+                            colored_print(f"   {comments}", Colors.CYAN)
+                        else:
+                            colored_print(f"   📄 No comments in this play", Colors.CYAN)
+                        colored_print(f"   📝 No heroes found in comments either", Colors.RED)
+                        colored_print(f"   🔗 BGG Play Link: https://boardgamegeek.com/play/{play_id}", Colors.BLUE)
+                    
+                    skipped_plays['meaningless_names'].append({
+                        'play_id': play_id,
+                        'play_date': play_date,
+                        'userid': userid,
+                        'comments': comments,
+                        'original_color': color,
+                        'cleaned_name': cleaned_name,
+                        'player_xml': player.attrib,
+                        'full_xml': ET.tostring(player, encoding='unicode', method='xml'),
+                        'reason': 'Meaningless name after cleaning, no heroes in comments'
+                    })
+                    continue
             
             # Use cached translation if available
             if cleaned_name in translation_cache:
@@ -434,6 +766,65 @@ def extract_hero_names_from_plays(plays_list):
                 # Small delay to be respectful to translation API
                 if was_translated:
                     time.sleep(0.1)
+            
+            # Check if this was filtered as a villain or resulted in empty translation
+            if translated_name is None:
+                if TERMINAL_DEBUG:
+                    colored_print(f"\n🚫 SKIPPED - Villain/Scenario Filtered:", Colors.MAGENTA)
+                    colored_print(f"   Play ID: {play_id} | Date: {play_date}", Colors.CYAN)
+                    colored_print(f"   Original Color: '{color}'", Colors.YELLOW)
+                    colored_print(f"   Cleaned Name: '{cleaned_name}'", Colors.YELLOW)
+                    colored_print(f"   Translation Result: None (filtered)", Colors.RED)
+                    colored_print(f"   Raw Player XML:", Colors.YELLOW)
+                    player_xml_str = ET.tostring(player, encoding='unicode', method='xml')
+                    colored_print(f"   {player_xml_str}", Colors.YELLOW)
+                    if comments:
+                        colored_print(f"   Comments: {comments[:100]}...", Colors.CYAN)
+                    colored_print(f"  🦹 Villain filtered: '{color}' → '{cleaned_name}'", Colors.MAGENTA)
+                    colored_print(f"   🔗 BGG Play Link: https://boardgamegeek.com/play/{play_id}", Colors.BLUE)
+                
+                skipped_plays['villains'].append({
+                    'play_id': play_id,
+                    'play_date': play_date,
+                    'userid': userid,
+                    'comments': comments,
+                    'original_color': color,
+                    'cleaned_name': cleaned_name,
+                    'player_xml': player.attrib,
+                    'full_xml': ET.tostring(player, encoding='unicode', method='xml'),
+                    'reason': 'Filtered as villain/scenario'
+                })
+                continue
+            
+            # Skip if translation resulted in empty string
+            if not translated_name or not translated_name.strip():
+                if TERMINAL_DEBUG:
+                    colored_print(f"\n🚫 SKIPPED - Translation Error:", Colors.MAGENTA)
+                    colored_print(f"   Play ID: {play_id} | Date: {play_date}", Colors.CYAN)
+                    colored_print(f"   Original Color: '{color}'", Colors.YELLOW)
+                    colored_print(f"   Cleaned Name: '{cleaned_name}'", Colors.YELLOW)
+                    colored_print(f"   Translation Result: '{translated_name}'", Colors.RED)
+                    colored_print(f"   Raw Player XML:", Colors.YELLOW)
+                    player_xml_str = ET.tostring(player, encoding='unicode', method='xml')
+                    colored_print(f"   {player_xml_str}", Colors.YELLOW)
+                    if comments:
+                        colored_print(f"   Comments: {comments[:100]}...", Colors.CYAN)
+                    colored_print(f"  ❌ Translation error: '{color}' → '{cleaned_name}' → '{translated_name}'", Colors.RED)
+                    colored_print(f"   🔗 BGG Play Link: https://boardgamegeek.com/play/{play_id}", Colors.BLUE)
+                
+                skipped_plays['translation_errors'].append({
+                    'play_id': play_id,
+                    'play_date': play_date,
+                    'userid': userid,
+                    'comments': comments,
+                    'original_color': color,
+                    'cleaned_name': cleaned_name,
+                    'translated_name': translated_name,
+                    'player_xml': player.attrib,
+                    'full_xml': ET.tostring(player, encoding='unicode', method='xml'),
+                    'reason': 'Translation resulted in empty string'
+                })
+                continue
             
             # Skip if translation resulted in empty string or None (villains/scenarios)
             if not translated_name:
@@ -480,7 +871,7 @@ def extract_hero_names_from_plays(plays_list):
                 continue
             
             # Try to match to official hero list
-            official_name, is_official, was_fuzzy_matched = match_to_official_hero(translated_name)
+            official_name, is_official, was_fuzzy_matched, is_altered = match_to_official_hero(translated_name)
             
             # Use the official name if found, otherwise use translated name
             final_name = official_name if is_official else translated_name
@@ -495,7 +886,7 @@ def extract_hero_names_from_plays(plays_list):
                 status_flags.append("UNMATCHED")
                 if final_name not in unmatched_heroes:
                     unmatched_heroes.append(final_name)
-                    # Store XML example for debugging
+                    # Store enhanced XML example for debugging
                     unmatched_xml_examples[final_name] = {
                         'original_color': color,
                         'cleaned_name': cleaned_name,
@@ -504,19 +895,35 @@ def extract_hero_names_from_plays(plays_list):
                         'play_id': play_id,
                         'play_date': play_date,
                         'userid': userid,
-                        'comments': comments
+                        'comments': comments,
+                        'raw_player_xml': str(ET.tostring(player, encoding='unicode')),  # Full XML before processing
+                        'is_altered': is_altered
                     }
             if was_fuzzy_matched:
                 status_flags.append("FUZZY_MATCHED")
+            if is_altered:
+                status_flags.append("ALTERED_HERO")
             
-            # Show status with color coding
+            # Enhanced status with color coding
             status_str = ", ".join(status_flags)
             if cleaned_name != final_name or status_flags:
-                status_colored_print(cleaned_name, final_name, status_str)
+                if is_altered:
+                    colored_print(f"  🔄 Altered Hero: '{cleaned_name}' → '{final_name}' [{status_str}]", Colors.BLUE)
+                else:
+                    status_colored_print(cleaned_name, final_name, status_str)
             
-            # Create a key that includes status info
-            key = f"{final_name} [{status_str}]"
-            hero_counts[key] = hero_counts.get(key, 0) + 1
+            # Add to results using consistent structure
+            if final_name in hero_counts:
+                hero_counts[final_name]['count'] += 1
+                hero_counts[final_name]['status'].add(status_str)
+                if is_altered:
+                    hero_counts[final_name]['is_altered'] = True
+            else:
+                hero_counts[final_name] = {
+                    'count': 1,
+                    'status': {status_str},
+                    'is_altered': is_altered
+                }
     
     # Report statistics
     colored_print(f"\n📊 Play Analysis Statistics:", Colors.BOLD)
@@ -571,28 +978,129 @@ def extract_hero_names_from_plays(plays_list):
                 colored_print(f"         Play ID: {example['play_id']}", Colors.YELLOW)
                 colored_print(f"         Play Date: {example['play_date']}", Colors.YELLOW)
                 colored_print(f"         User ID: {example['userid']}", Colors.YELLOW)
+                colored_print(f"         🔗 BGG Play Link: https://boardgamegeek.com/play/{example['play_id']}", Colors.BLUE)
                 if example.get('comments'):
                     colored_print(f"         Comments: {example['comments'][:100]}{'...' if len(example['comments']) > 100 else ''}", Colors.YELLOW)
                 colored_print(f"         Full player XML: {example['player_xml']}", Colors.YELLOW)
-    
+                
+                # Enhanced debugging - show raw XML before cleaning
+                if TERMINAL_DEBUG and example.get('raw_player_xml'):
+                    colored_print(f"         📋 Raw Player XML (before processing):", Colors.CYAN)
+                    colored_print(f"         {example['raw_player_xml']}", Colors.CYAN)
+                
+                # Enhanced debugging - show if it matches villain patterns
+                if TERMINAL_DEBUG:
+                    villain_match = is_villain_name(example['cleaned_name'])
+                    if villain_match:
+                        colored_print(f"         🦹 Villain check: MATCHES villain patterns", Colors.MAGENTA)
+                    else:
+                        colored_print(f"         🦸 Villain check: No villain pattern match", Colors.CYAN)
+                    
+                    # Check if this was an altered hero
+                    if example.get('is_altered'):
+                        colored_print(f"         🔄 Altered Hero: This was detected as an AH variant", Colors.BLUE)
+                    
+                    # Check against both hero and villain lists
+                    hero_similarity = find_closest_hero_match(example['cleaned_name'])
+                    if hero_similarity:
+                        colored_print(f"         🎯 Closest hero match: '{hero_similarity['name']}' (similarity: {hero_similarity['score']:.2f})", Colors.BLUE)
+                    
+                    villain_similarity = find_closest_villain_match(example['cleaned_name'])
+                    if villain_similarity:
+                        colored_print(f"         🦹 Closest villain match: '{villain_similarity['name']}' (similarity: {villain_similarity['score']:.2f})", Colors.MAGENTA)
+
     if not hero_counts:
         return []
     
-    # Parse the results to separate name and status
+    # Parse the results to separate name, status, and track altered heroes
     results = []
-    for key, count in hero_counts.items():
-        # Extract name and status from the key
-        if '[' in key and key.endswith(']'):
-            name = key[:key.rfind('[')].strip()
-            status = key[key.rfind('[')+1:-1]
-        else:
-            name = key
-            status = "UNKNOWN"
-        results.append({"hero_name": name, "play_count": count, "status": status})
+    hero_totals = {}  # Track total plays per hero (including altered versions)
+    altered_counts = {}  # Track altered hero counts separately
     
-    # Sort by play count (descending)
-    results.sort(key=lambda x: x["play_count"], reverse=True)
-    return results
+    for hero_name, hero_data in hero_counts.items():
+        # Extract count and status from the data structure
+        count = hero_data['count']
+        status_set = hero_data['status']
+        is_altered_entry = hero_data.get('is_altered', False)
+        
+        # Convert status set to string
+        status = '|'.join(sorted(status_set))
+        
+        # Add to hero totals
+        if hero_name not in hero_totals:
+            hero_totals[hero_name] = 0
+        hero_totals[hero_name] += count
+        
+        # Track altered count separately
+        if is_altered_entry:
+            if hero_name not in altered_counts:
+                altered_counts[hero_name] = 0
+            altered_counts[hero_name] += count
+        
+        results.append({
+            "hero_name": hero_name, 
+            "play_count": count, 
+            "status": status,
+            "is_altered": is_altered_entry,
+            "total_plays": hero_totals[hero_name],  # Will be updated in final pass
+            "altered_plays": altered_counts.get(hero_name, 0)
+        })
+    
+    # Update total plays for all entries
+    for result in results:
+        result["total_plays"] = hero_totals[result["hero_name"]]
+        result["altered_plays"] = altered_counts.get(result["hero_name"], 0)
+    
+    # Sort by total play count (descending), then by individual count
+    results.sort(key=lambda x: (x["total_plays"], x["play_count"]), reverse=True)
+    
+    # Return additional statistics for accurate summary
+    stats = {
+        'total_plays': total_plays,
+        'plays_with_players': plays_with_players,
+        'total_players': total_players,
+        'total_players_with_color': total_players_with_color
+    }
+    
+    return results, skipped_plays, stats
+
+def find_closest_hero_match(name):
+    """Find the closest matching hero name using basic string similarity"""
+    if not name or not OFFICIAL_HEROES:
+        return None
+    
+    best_match = None
+    best_score = 0
+    
+    name_lower = name.lower()
+    for hero in OFFICIAL_HEROES:
+        hero_lower = hero.lower()
+        # Simple similarity based on character overlap
+        score = len(set(name_lower) & set(hero_lower)) / len(set(name_lower) | set(hero_lower))
+        if score > best_score and score > 0.3:  # Minimum similarity threshold
+            best_score = score
+            best_match = hero
+    
+    return {"name": best_match, "score": best_score} if best_match else None
+
+def find_closest_villain_match(name):
+    """Find the closest matching villain name using basic string similarity"""
+    if not name or not OFFICIAL_VILLAINS:
+        return None
+    
+    best_match = None
+    best_score = 0
+    
+    name_lower = name.lower()
+    for villain in OFFICIAL_VILLAINS:
+        villain_lower = villain.lower()
+        # Simple similarity based on character overlap
+        score = len(set(name_lower) & set(villain_lower)) / len(set(name_lower) | set(villain_lower))
+        if score > best_score and score > 0.3:  # Minimum similarity threshold
+            best_score = score
+            best_match = villain
+    
+    return {"name": best_match, "score": best_score} if best_match else None
 
 def clean_hero_name(raw_name):
     """Clean up hero name by removing aspects, team info, etc."""
@@ -653,6 +1161,166 @@ def extract_hero_mentions_from_plays(plays_list):
     results.sort(key=lambda x: x["mention_count"], reverse=True)
     return results
 
+def parse_heroes_from_comments(comments, play_id=None):
+    """
+    Parse hero names from BGG play comments using various heuristics.
+    Returns list of potential hero names found in the comments.
+    """
+    if not comments:
+        return []
+    
+    heroes_found = []
+    comment_lower = comments.lower()
+    
+    # Common patterns for heroes in Marvel Champions comments
+    patterns = [
+        # Direct hero mentions with common formats
+        r'\b(spider-?man|spiderman)\b',
+        r'\b(iron-?man|ironman)\b', 
+        r'\b(captain america|cap america|steve rogers)\b',
+        r'\b(black widow|natasha)\b',
+        r'\b(she-?hulk|jennifer walters)\b',
+        r'\b(ms\.?\s*marvel|kamala|kamala khan)\b',
+        r'\b(doctor strange|dr\.?\s*strange|stephen strange)\b',
+        r'\b(captain marvel|carol danvers)\b',
+        r'\b(ant-?man|antman|scott lang)\b',
+        r'\b(wasp|janet|hope van dyne)\b',
+        r'\b(quicksilver|pietro)\b',
+        r'\b(scarlet witch|wanda|wanda maximoff)\b',
+        r'\b(hawkeye|clint barton)\b',
+        r'\b(black panther|t\'?challa)\b',
+        r'\b(spider-?woman|jessica drew)\b',
+        r'\b(valkyrie|brunnhilde)\b',
+        r'\b(vision|the vision)\b',
+        r'\b(war machine|james rhodes|rhodey)\b',
+        r'\b(falcon|sam wilson)\b',
+        r'\b(winter soldier|bucky|bucky barnes)\b',
+        r'\b(hulk|bruce banner)\b',
+        r'\b(thor|god of thunder)\b',
+        r'\b(wolverine|logan|james howlett)\b',
+        r'\b(storm|ororo)\b',
+        r'\b(cyclops|scott summers)\b',
+        r'\b(phoenix|jean grey)\b',
+        r'\b(colossus|piotr)\b',
+        r'\b(nightcrawler|kurt wagner)\b',
+        r'\b(shadowcat|kitty pryde)\b',
+        r'\b(gambit|remy lebeau)\b',
+        r'\b(rogue|marie)\b',
+        r'\b(deadpool|wade wilson)\b',
+        r'\b(cable|nathan summers)\b',
+        r'\b(domino|neena thurman)\b',
+        r'\b(psylocke|betsy braddock)\b',
+        r'\b(angel|warren worthington)\b',
+        r'\b(iceman|bobby drake)\b',
+        r'\b(magik|illyana rasputin)\b',
+        r'\b(nova|richard rider|sam alexander)\b',
+        r'\b(spider-?ham|peter porker)\b',
+        r'\b(ghost-?spider|spider-?gwen|gwen stacy)\b',
+        r'\b(miles morales|miles|ultimate spider-?man)\b',
+        r'\b(silk|cindy moon)\b',
+        r'\b(spider-?man 2099|miguel o\'?hara)\b',
+        r'\b(venom|eddie brock)\b',
+        r'\b(groot|i am groot)\b',
+        r'\b(rocket raccoon|rocket)\b',
+        r'\b(star-?lord|peter quill)\b',
+        r'\b(gamora|deadliest woman)\b',
+        r'\b(drax|the destroyer)\b',
+        r'\b(nebula|blue meanie)\b',
+        r'\b(adam warlock|adam)\b',
+        r'\b(maria hill|agent hill)\b',
+        r'\b(ironheart|riri williams)\b',
+        r'\b(x-?23|laura kinney)\b',
+        r'\b(jubilee|jubilation lee)\b',
+        r'\b(bishop|lucas bishop)\b',
+        
+        # Marvel Champions specific nickname patterns
+        r'\b(cap marvel|capmarv)\b',  # Captain Marvel nicknames
+        r'\b(panther)\b',  # Black Panther nickname
+        r'\b(spidey)\b',  # Spider-Man nickname
+        r'\b(wolverine|wolvie|logan)\b',  # Wolverine variations
+        r'\b(drax)\b',  # Drax nickname
+        
+        # Pattern for "Hero vs Villain" format
+        r'\b([a-z\-\s]+)\s+vs?\s+[a-z\-\s]+\b',
+        
+        # Pattern for "Hero (Aspect)" format
+        r'\b([a-z\-\s]+)\s*\([^)]*(?:aggression|justice|protection|leadership)[^)]*\)',
+        
+        # Pattern for "Hero - Aspect" format  
+        r'\b([a-z\-\s]+)\s*[-–]\s*(?:aggression|justice|protection|leadership)\b',
+        
+        # Pattern for aspect notation like "Justice／She-hulk"
+        r'(?:aggression|justice|protection|leadership)／([a-z\-\s]+)',
+        r'([a-z\-\s]+)／(?:aggression|justice|protection|leadership)',
+        
+        # Pattern for hero combinations with "&" or "and"
+        r'\b([a-z\-\s]+)\s*[&+]\s*([a-z\-\s]+)',
+        
+        # Pattern for hero lists with commas
+        r'\b([a-z\-\s]+),\s*([a-z\-\s]+)(?:,\s*([a-z\-\s]+))?',
+        
+        # Pattern for "Hero x Villain" format (x as vs)
+        r'\b([a-z\-\s]+)\s+x\s+[a-z\-\s]+\b',
+    ]
+    
+    for pattern in patterns:
+        matches = re.findall(pattern, comment_lower, re.IGNORECASE)
+        for match in matches:
+            # Handle both single matches and tuple matches (from multiple capture groups)
+            match_list = []
+            if isinstance(match, tuple):
+                # Multiple capture groups - process each non-empty group
+                match_list = [m for m in match if m and m.strip()]
+            else:
+                # Single match
+                match_list = [match] if match and match.strip() else []
+            
+            for hero_candidate in match_list:
+                # Clean up the match
+                hero_name = hero_candidate.strip()
+                if not hero_name or len(hero_name) < 3:
+                    continue
+                    
+                # Skip common non-hero words
+                skip_words = {'with', 'and', 'the', 'vs', 'against', 'lose', 'lost', 'win', 'won', 
+                             'play', 'played', 'game', 'solo', 'duo', 'team', 'mode', 'standard', 
+                             'expert', 'heroic', 'campaign', 'scenario', 'deck', 'card', 'pack',
+                             'experto', 'normal', 'oturum', 'kazandik', 'kazandık'}
+                if hero_name.lower() in skip_words:
+                    continue
+                    
+                # Try to match against known heroes
+                official_match, is_official, is_fuzzy, is_altered = match_to_official_hero(hero_name)
+                if is_official or is_fuzzy:
+                    heroes_found.append({
+                        'original': hero_candidate,
+                        'cleaned': hero_name,
+                        'matched': official_match,
+                        'is_official': is_official,
+                        'is_fuzzy': is_fuzzy,
+                        'is_altered': is_altered,
+                        'pattern': pattern
+                    })
+                    
+                    if TERMINAL_DEBUG:
+                        if is_official:
+                            colored_print(f"    ✅ Found hero in comments: '{hero_candidate}' → '{official_match}'", Colors.GREEN)
+                        elif is_fuzzy:
+                            colored_print(f"    🎯 Fuzzy match in comments: '{hero_candidate}' → '{official_match}'", Colors.BLUE)
+    
+    # Remove duplicates based on matched hero name
+    seen = set()
+    unique_heroes = []
+    for hero in heroes_found:
+        if hero['matched'] not in seen:
+            seen.add(hero['matched'])
+            unique_heroes.append(hero)
+    
+    if TERMINAL_DEBUG and unique_heroes:
+        colored_print(f"    📝 Total unique heroes found in comments: {len(unique_heroes)}", Colors.CYAN)
+        
+    return unique_heroes
+
 # First, get some recent plays to find active users
 colored_print("🔍 Fetching recent plays to find active users...", Colors.CYAN)
 root = fetch_plays_xml(page=1)
@@ -670,24 +1338,103 @@ if userids:
     
     if user_plays:
         # Analyze hero names from Team/Color fields
-        hero_results = extract_hero_names_from_plays(user_plays)
+        hero_results, skipped_plays, extraction_stats = extract_hero_names_from_plays(user_plays)
         colored_print(f"\n🎯 Hero usage analysis for user {first_userid} (with official matching):", Colors.BOLD)
         
-        # Print top 30 hero results
+        # Print top 30 hero results with enhanced AH tracking
         for i, hero in enumerate(hero_results[:30]):
-            print(f"{i+1:2d}. {hero['hero_name']:<20} {hero['play_count']:>3} plays [{hero['status']}]")
+            altered_info = ""
+            if hero.get('altered_plays', 0) > 0:
+                altered_info = f" (🔄 {hero['altered_plays']} AH)"
+            print(f"{i+1:2d}. {hero['hero_name']:<20} {hero['play_count']:>3} plays [{hero['status']}]{altered_info}")
         
-        # Show summary statistics with colors
+        # Show comprehensive summary statistics with colors including all categories
         total_plays = sum(hero['play_count'] for hero in hero_results)
         official_plays = sum(hero['play_count'] for hero in hero_results if 'OFFICIAL' in hero['status'])
         translated_plays = sum(hero['play_count'] for hero in hero_results if 'TRANSLATED' in hero['status'])
         unmatched_plays = sum(hero['play_count'] for hero in hero_results if 'UNMATCHED' in hero['status'])
+        altered_plays = sum(hero['play_count'] for hero in hero_results if 'ALTERED_HERO' in hero['status'])
         
-        colored_print(f"\n📊 Summary Statistics:", Colors.BOLD)
-        colored_print(f"- Total hero plays analyzed: {total_plays}", Colors.CYAN)
-        colored_print(f"- ✅ Official matches: {official_plays} ({official_plays/total_plays*100:.1f}%)" if total_plays > 0 else "- ✅ Official matches: 0 (0.0%)", Colors.GREEN)
-        colored_print(f"- 🔄 Translated plays: {translated_plays} ({translated_plays/total_plays*100:.1f}%)" if total_plays > 0 else "- 🔄 Translated plays: 0 (0.0%)", Colors.YELLOW)
-        colored_print(f"- ❌ Unmatched plays: {unmatched_plays} ({unmatched_plays/total_plays*100:.1f}%)" if total_plays > 0 else "- ❌ Unmatched plays: 0 (0.0%)", Colors.RED)
+        # Calculate skipped player records (not plays) totals
+        total_skipped_player_records = sum(len(category_list) for category_list in [
+            skipped_plays.get('no_players', []),
+            skipped_plays.get('empty_color', []), 
+            skipped_plays.get('meaningless_names', []),
+            skipped_plays.get('villains', []),
+            skipped_plays.get('translation_errors', [])
+        ])
+        
+        # Get individual skipped categories (these are player records, not plays)
+        skipped_no_players = len(skipped_plays.get('no_players', []))
+        skipped_empty_color = len(skipped_plays.get('empty_color', []))
+        skipped_meaningless = len(skipped_plays.get('meaningless_names', []))
+        skipped_villains = len(skipped_plays.get('villains', []))
+        skipped_translation_errors = len(skipped_plays.get('translation_errors', []))
+        
+        # Total BGG plays from initial fetch
+        total_bgg_plays = len(user_plays)
+        
+        # Use the accurate statistics from the extraction function
+        plays_with_hero_data = extraction_stats['plays_with_players']
+        plays_without_hero_data = total_bgg_plays - plays_with_hero_data
+        
+        colored_print(f"\n📊 BGG Marvel Champions Analysis Summary:", Colors.BOLD)
+        colored_print(f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", Colors.CYAN)
+        
+        # Calculate key totals
+        total_player_records = extraction_stats['total_players']
+        successful_player_records = extraction_stats['total_players_with_color']
+        
+        # Main baseline metrics
+        colored_print(f"📋 BASELINE DATA:", Colors.BOLD)
+        colored_print(f"   • Total BGG plays analyzed: {total_bgg_plays}", Colors.CYAN)
+        colored_print(f"   • Total player records found: {total_player_records}", Colors.CYAN)
+        
+        # BGG Play-level success rates (out of {total_bgg_plays} plays)
+        colored_print(f"\n🎯 BGG PLAY SUCCESS RATES (of {total_bgg_plays} plays):", Colors.BOLD)
+        colored_print(f"   • Plays with hero data extracted: {plays_with_hero_data} ({plays_with_hero_data/total_bgg_plays*100:.1f}%)" if total_bgg_plays > 0 else "   • Plays with hero data: 0 (0.0%)", Colors.GREEN)
+        colored_print(f"   • Plays with no usable data: {plays_without_hero_data} ({plays_without_hero_data/total_bgg_plays*100:.1f}%)" if total_bgg_plays > 0 else "   • Plays with no data: 0 (0.0%)", Colors.YELLOW)
+        
+        # Player Record-level success rates (out of {total_player_records} player records)
+        colored_print(f"\n👥 PLAYER RECORD SUCCESS RATES (of {total_player_records} player records):", Colors.BOLD)
+        colored_print(f"   • Successfully resolved hero data: {successful_player_records} ({successful_player_records/total_player_records*100:.1f}%)" if total_player_records > 0 else "   • Successful resolutions: 0 (0.0%)", Colors.GREEN)
+        
+        # Breakdown of unsuccessful player records
+        skipped_player_records = total_player_records - successful_player_records
+        colored_print(f"   • Player records skipped: {skipped_player_records} ({skipped_player_records/total_player_records*100:.1f}%)" if total_player_records > 0 else "   • Records skipped: 0 (0.0%)", Colors.YELLOW)
+        
+        # Detailed skip reasons (of skipped player records)
+        if skipped_player_records > 0:
+            colored_print(f"     ├─ Empty color field: {skipped_empty_color} ({skipped_empty_color/total_player_records*100:.1f}% of all records)", Colors.MAGENTA)
+            colored_print(f"     ├─ Meaningless names: {skipped_meaningless} ({skipped_meaningless/total_player_records*100:.1f}% of all records)", Colors.MAGENTA)
+            colored_print(f"     ├─ Villains filtered: {skipped_villains} ({skipped_villains/total_player_records*100:.1f}% of all records)", Colors.MAGENTA)
+            colored_print(f"     └─ Translation errors: {skipped_translation_errors} ({skipped_translation_errors/total_player_records*100:.1f}% of all records)", Colors.MAGENTA)
+        
+        # Additional: Entire plays with no player data (separate category)
+        colored_print(f"   • Entire plays with no player element: {skipped_no_players} ({skipped_no_players/total_bgg_plays*100:.1f}% of BGG plays)" if total_bgg_plays > 0 else "   • No player element: 0 (0.0%)", Colors.MAGENTA)
+        
+        # Hero extraction quality (of successfully extracted heroes)
+        colored_print(f"\n✅ HERO EXTRACTION QUALITY (of {total_plays} hero plays):", Colors.BOLD)
+        colored_print(f"   • Official matches: {official_plays} ({official_plays/total_plays*100:.1f}%)" if total_plays > 0 else "   • Official matches: 0 (0.0%)", Colors.GREEN)
+        colored_print(f"   • Translated names: {translated_plays} ({translated_plays/total_plays*100:.1f}%)" if total_plays > 0 else "   • Translated: 0 (0.0%)", Colors.YELLOW)
+        colored_print(f"   • Altered Heroes (AH): {altered_plays} ({altered_plays/total_plays*100:.1f}%)" if total_plays > 0 else "   • Altered Heroes: 0 (0.0%)", Colors.BLUE)
+        colored_print(f"   • Unmatched heroes: {unmatched_plays} ({unmatched_plays/total_plays*100:.1f}%)" if total_plays > 0 else "   • Unmatched: 0 (0.0%)", Colors.RED)
+        
+        # Key performance metrics
+        hero_processing_success_rate = (official_plays + translated_plays + altered_plays) / total_plays * 100 if total_plays > 0 else 0
+        
+        # Count plays recovered from comments (look for FROM_COMMENTS in hero statuses)
+        comment_recovered_plays = 0
+        for hero_entry in hero_results:
+            if 'FROM_COMMENTS' in hero_entry.get('status', ''):
+                comment_recovered_plays += hero_entry.get('play_count', 0)
+        
+        colored_print(f"\n📈 KEY PERFORMANCE METRICS:", Colors.BOLD)
+        colored_print(f"   • Overall hero processing success: {hero_processing_success_rate:.1f}% (excludes unmatched)", Colors.CYAN)
+        colored_print(f"   • Comment-based recovery: {comment_recovered_plays} hero plays recovered from comments", Colors.CYAN)
+        colored_print(f"   • Average hero plays per BGG play: {total_plays/total_bgg_plays:.1f}" if total_bgg_plays > 0 else "   • Average hero plays per play: 0.0", Colors.CYAN)
+        
+        colored_print(f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", Colors.CYAN)
         
         # Also show comment-based analysis for comparison
         comment_results = extract_hero_mentions_from_plays(user_plays)
