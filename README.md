@@ -110,8 +110,7 @@ marvel-champions-bgg-analyzer/
 ├── README.md             # This file
 ├── .venv/                # Virtual environment (not committed)
 ├── .github/              # GitHub configuration
-│   ├── workflows/        # GitHub Actions
-│   └── dependabot.yml    # Dependency management
+│   └── copilot-instructions.md  # Copilot development guidelines
 └── .gitignore            # Git ignore rules
 ```
 
@@ -158,7 +157,13 @@ This project is open source. Please respect BoardGameGeek's API terms of service
 
 ## 📈 Recent Improvements
 
-### GitHub Workflow Cleanup (Jun 21, 2025) (Latest)
+### Repository Template Cleanup (Jun 21, 2025) (Latest)
+- 🧹 **Removed template files** - Deleted unnecessary `FUNDING.yml` and `dependabot.yml` files from `.github/` directory
+- 🎯 **Simplified project structure** - Focused repository on core BGG analysis functionality without template complexity
+- ✅ **Clean starting point** - Eliminated boilerplate files not relevant to this specific project
+- 📁 **Streamlined configuration** - Repository now contains only project-specific GitHub configuration
+
+### GitHub Workflow Cleanup (Jun 21, 2025) - `2a7be99`
 - 🧹 **Removed failing Algolia workflow** - Eliminated problematic `.github/workflows/index.yml` that was causing hourly GitHub Actions failures
 - 🔧 **Repository cleanup** - Removed dependencies on non-existent `scripts/download_and_index.py` and `scripts/requirements.txt`
 - ✅ **Improved stability** - No more failed workflow notifications, cleaner repository status
