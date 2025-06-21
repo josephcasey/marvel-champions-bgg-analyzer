@@ -1172,6 +1172,98 @@ def parse_heroes_from_comments(comments, play_id=None):
     heroes_found = []
     comment_lower = comments.lower()
     
+    # Campaign detection - infer default heroes from campaigns
+    campaign_patterns = {
+        # English campaign patterns
+        r'\b(?:shield|s\.?h\.?i\.?e\.?l\.?d\.?)\s+campaign\b': ['Agent 13', 'Nick Fury'],
+        r'\bagents?\s+of\s+shield\b': ['Agent 13', 'Nick Fury'],
+        r'\bmutant\s+genesis\b': ['Wolverine', 'Storm', 'Cyclops'],
+        r'\bnext\s+evolution\b': ['Colossus', 'Shadowcat'],
+        r'\bsinister\s+motives\b': ['Ghost-Spider', 'Miles Morales'],
+        r'\bmad\s+titan\'?s?\s+shadow\b': ['Adam Warlock', 'Spectrum'],
+        r'\bgalaxy\'?s?\s+most\s+wanted\b': ['Groot', 'Rocket Raccoon'],
+        r'\brise\s+of\s+red\s+skull\b': ['Hawkeye', 'Spider-Woman'],
+        r'\bhood\b.*\bcampaign\b': ['Captain America', 'Iron Man'],
+        
+        # French campaign patterns  
+        r'\bcampagne\s+shield\b': ['Agent 13', 'Nick Fury'],
+        r'\bcampagne\s+s\.?h\.?i\.?e\.?l\.?d\.?\b': ['Agent 13', 'Nick Fury'],
+        
+        # Spanish campaign patterns
+        r'\bcampaña\s+shield\b': ['Agent 13', 'Nick Fury'],
+        r'\bcampaña\s+s\.?h\.?i\.?e\.?l\.?d\.?\b': ['Agent 13', 'Nick Fury'],
+        
+        # German campaign patterns
+        r'\bschild\s+kampagne\b': ['Agent 13', 'Nick Fury'],
+        r'\bs\.?h\.?i\.?e\.?l\.?d\.?\s+kampagne\b': ['Agent 13', 'Nick Fury'],
+    }
+    
+    # Check for campaign patterns first
+    for pattern, default_heroes in campaign_patterns.items():
+        if re.search(pattern, comment_lower, re.IGNORECASE):
+            for hero in default_heroes:
+                heroes_found.append({
+                    'original': f'Campaign: {hero}',
+                    'cleaned': hero.lower(),
+                    'matched': hero,
+                    'is_official': True,
+                    'is_fuzzy': False,
+                    'is_altered': False,
+                    'pattern': f'campaign_detection: {pattern}',
+                    'source': 'campaign_inference'
+                })
+            if TERMINAL_DEBUG:
+                colored_print(f"    🏛️ Campaign detected: {default_heroes} from pattern '{pattern}'", Colors.GREEN)
+            break  # Only use first matching campaign pattern
+    
+    # Villain detection - look for villain names in comments
+    villain_patterns = {
+        # Common villain name patterns (English, French, Spanish variants)
+        r'\b(?:against|vs\.?|versus|contre|contra)\s+([a-z\-\s]+)\b': 'villain_context',
+        r'\b(batroc|bartoc)\b': 'Batroc',  # The villain from your example
+        r'\b(red skull|crâne rouge|calavera roja)\b': 'Red Skull',
+        r'\b(green goblin|goblin vert|duende verde)\b': 'Green Goblin',
+        r'\b(ultron)\b': 'Ultron',
+        r'\b(rhino|rhinocéros|rinoceronte)\b': 'Rhino',
+        r'\b(klaw|garra)\b': 'Klaw',
+        r'\b(taskmaster|supervisor de tareas)\b': 'Taskmaster',
+        r'\b(crossbones|huesos cruzados)\b': 'Crossbones',
+        r'\b(absorbing man|hombre absorbente)\b': 'Absorbing Man',
+        r'\b(titania)\b': 'Titania',
+        r'\b(wrecker|demoledor)\b': 'Wrecker',
+        r'\b(thunderball)\b': 'Thunderball',
+        r'\b(piledriver|piloteador)\b': 'Piledriver',
+        r'\b(bulldozer)\b': 'Bulldozer',
+        r'\b(nebula)\b': 'Nebula',  # Can be villain in some contexts
+        r'\b(ronan|ronan el acusador)\b': 'Ronan',
+        r'\b(collector|coleccionista)\b': 'Collector',
+        r'\b(drang)\b': 'Drang',
+        r'\b(ebony maw)\b': 'Ebony Maw',
+        r'\b(thanos)\b': 'Thanos',
+        r'\b(magneto|magnéto)\b': 'Magneto',
+        r'\b(sentinel|centinela)\b': 'Sentinel',
+        r'\b(mystique|mística)\b': 'Mystique',
+        r'\b(sabretooth|dientes de sable)\b': 'Sabretooth',
+        r'\b(juggernaut|mole)\b': 'Juggernaut',
+        r'\b(apocalypse|apocalipsis)\b': 'Apocalypse',
+        r'\b(mojo)\b': 'MojoMania',
+        r'\b(spiral)\b': 'Spiral',
+        r'\b(dark beast|bestia oscura)\b': 'Dark Beast',
+    }
+    
+    for pattern, villain_name in villain_patterns.items():
+        matches = re.findall(pattern, comment_lower, re.IGNORECASE)
+        if matches and villain_name != 'villain_context':
+            if TERMINAL_DEBUG:
+                colored_print(f"    🦹 Villain detected in comments: '{villain_name}' from pattern '{pattern}'", Colors.MAGENTA)
+        elif matches and villain_name == 'villain_context':
+            # Extract the villain name from the context
+            for match in matches:
+                villain_candidate = match.strip()
+                if len(villain_candidate) > 2:
+                    if TERMINAL_DEBUG:
+                        colored_print(f"    🦹 Potential villain in comments: '{villain_candidate}'", Colors.MAGENTA)
+    
     # Common patterns for heroes in Marvel Champions comments
     patterns = [
         # Direct hero mentions with common formats
