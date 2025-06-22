@@ -46,6 +46,37 @@ COMMIT_DESCRIPTION="$2"
 echo -e "${CYAN}=== MARVEL CHAMPIONS BGG ANALYZER DEPLOYMENT (Enhanced) ===${NC}"
 echo ""
 
+# Step 0: Pre-Deployment Validation & Git Analysis
+print_status "Step 0: Pre-Deployment Validation & Git Analysis"
+
+# Check if deployment scripts themselves have uncommitted changes
+SCRIPT_STATUS=$(git status --porcelain scripts/)
+if [ -n "$SCRIPT_STATUS" ]; then
+    print_warning "Deployment scripts have uncommitted changes:"
+    echo "$SCRIPT_STATUS"
+    print_info "Continuing deployment - script changes will be included"
+fi
+
+# Display current git status
+print_info "Current git status:"
+git status --short
+
+# Show recent commits for context
+print_info "Recent commit history:"
+git log --oneline -5 | sed 's/^/  /'
+
+# Show what's ahead of origin
+AHEAD_COUNT=$(git rev-list --count HEAD ^origin/main 2>/dev/null || echo "0")
+print_info "Commits ahead of origin/main: $AHEAD_COUNT"
+
+# Check submodule status
+if [ -f ".gitmodules" ]; then
+    print_info "Submodule status:"
+    git submodule status | sed 's/^/  /'
+fi
+
+echo ""
+
 # Step 0: Pre-Deployment Validation & Analysis
 print_status "Step 0: Pre-Deployment Validation & Git Analysis"
 
@@ -456,6 +487,14 @@ if [ -n "$COMMIT_HASH" ]; then
     echo "   📁 Files Modified:"
     git diff --name-status HEAD~1 | sed 's/^/        /'
     echo "   📊 Change Stats: $(git diff --stat HEAD~1 | tail -1)"
+    
+    # Show actual changes for review (first 10 lines of each file)
+    echo "   🔍 Preview of Changes:"
+    git diff --name-only HEAD~1 | head -3 | while read file; do
+        echo "      📄 $file:"
+        git diff HEAD~1 HEAD "$file" | head -15 | sed 's/^/           /'
+        echo "           ..."
+    done
 else
     echo "   ⚠️  No new commit created (no changes deployed)"
 fi
