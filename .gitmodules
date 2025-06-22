@@ -1,0 +1,3 @@
+[submodule "agent-rules"]
+	path = agent-rules
+	url = https://github.com/steipete/agent-rules.git
