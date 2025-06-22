@@ -157,7 +157,23 @@ This project is open source. Please respect BoardGameGeek's API terms of service
 
 ## 📈 Recent Improvements
 
-### Enhanced Agent Rules Integration (Jun 22, 2025) (Latest)
+### Deployment Consistency Rules & Workflow Standardization (Jun 22, 2025) (Latest)
+- 📋 **Deployment Consistency Rules** - Codified mandatory use of `/deploy` workflow instead of direct git commands for all operations
+- 📊 **Comprehensive README Documentation** - Established requirement to document both main repo AND agent-rules submodule changes in single entries
+- 🔧 **Enhanced Deployment Script** - Added comprehensive pre-deployment validation, detailed file change analysis, and complete terminal output
+- 📚 **Agent Rules Workflow Enhancement** - Updated deploy.mdc with Python environment validation rules, troubleshooting guides, and consistency enforcement
+- 🎯 **Process Standardization** - Ensures every deployment follows same validation pattern with complete audit trail and coordination
+- ⚡ **Self-Documenting Deployments** - Terminal output provides all verification data eliminating need for manual confirmation steps
+
+### Comprehensive Deployment Validation & Agent Rules Workflow (Jun 22, 2025) - `4ce10b5`
+- 📊 **Complete Pre-deployment Validation** - Added extensive git status, branch info, and uncommitted changes analysis before deployment
+- 🔍 **Detailed File Change Analysis** - Shows exact file modifications with diff summaries for review before commit
+- 📋 **Enhanced Agent Rules Workflow** - Updated deploy.mdc with Python environment validation rules, two-stage deployment patterns, and troubleshooting guide
+- 🎯 **Self-contained Review Process** - All verification data displayed in terminal, eliminating need for manual confirmation steps
+- 🚀 **Automated Workflow Gap Prevention** - Detects deployment script modifications and prevents self-modification issues during deployment
+- ✅ **Complete Deployment Transparency** - Every step documented with clear success/failure indicators and actionable guidance
+
+### Enhanced Agent Rules Integration (Jun 22, 2025) - `dc68c6a`
 - 🔧 **SwiftGoNC1-style Integration** - Converted agent-rules to proper git submodule following successful SwiftGoNC1 pattern
 - 🚀 **Enhanced Deployment Script** - New `deploy-changes-enhanced.sh` with comprehensive submodule management and coordination
 - 🔗 **Project Rules Symlink** - Added root-level `project-rules` symlink for better Copilot/Claude accessibility to deployment workflows
