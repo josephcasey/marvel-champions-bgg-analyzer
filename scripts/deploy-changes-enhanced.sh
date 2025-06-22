@@ -46,6 +46,89 @@ COMMIT_DESCRIPTION="$2"
 echo -e "${CYAN}=== MARVEL CHAMPIONS BGG ANALYZER DEPLOYMENT (Enhanced) ===${NC}"
 echo ""
 
+# Step 0: Pre-Deployment Validation & Analysis
+print_status "Step 0: Pre-Deployment Validation & Git Analysis"
+
+# Check if this script itself has uncommitted changes
+SCRIPT_STATUS=$(git status --porcelain | grep "scripts/deploy-changes-enhanced.sh" || true)
+if [ -n "$SCRIPT_STATUS" ]; then
+    print_error "Deployment script has uncommitted changes. Commit script changes first, then run deployment.
+    
+Found: $SCRIPT_STATUS
+
+This follows two-stage deployment pattern:
+1. Commit script changes separately  
+2. Run updated script for content deployment"
+fi
+
+print_success "Deployment script is clean"
+
+# Display current repository state
+print_info "Current Repository Analysis:"
+echo "📁 Working Directory: $(pwd)"
+echo "🌿 Current Branch: $(git branch --show-current)"
+echo "📊 Repository Status:"
+git status --short | sed 's/^/   /'
+
+# Check if we're ahead/behind origin
+git fetch origin main --quiet
+LOCAL_HASH=$(git rev-parse HEAD)
+REMOTE_HASH=$(git rev-parse origin/main)
+COMMITS_AHEAD=$(git rev-list --count origin/main..HEAD)
+COMMITS_BEHIND=$(git rev-list --count HEAD..origin/main)
+
+if [ "$COMMITS_AHEAD" -gt 0 ]; then
+    print_info "📈 Local commits ahead of origin: $COMMITS_AHEAD"
+    echo "   Recent local commits:"
+    git log --oneline origin/main..HEAD | sed 's/^/     /'
+fi
+
+if [ "$COMMITS_BEHIND" -gt 0 ]; then
+    print_warning "📉 Local commits behind origin: $COMMITS_BEHIND"
+    echo "   Recent origin commits:"
+    git log --oneline HEAD..origin/main | sed 's/^/     /'
+fi
+
+if [ "$COMMITS_AHEAD" -eq 0 ] && [ "$COMMITS_BEHIND" -eq 0 ]; then
+    print_success "📍 Local and origin are in sync"
+fi
+
+# Submodule analysis
+if [ -f ".gitmodules" ]; then
+    print_info "🔗 Submodule Analysis:"
+    git submodule status | sed 's/^/   /'
+    
+    # Check if submodules have uncommitted changes
+    SUBMODULE_DIRTY=$(git submodule foreach --quiet 'git status --porcelain' | wc -l | tr -d ' ')
+    if [ "$SUBMODULE_DIRTY" -gt 0 ]; then
+        print_info "📝 Submodule uncommitted changes detected:"
+        git submodule foreach 'echo "  In $name:"; git status --short | sed "s/^/    /"'
+    else
+        print_success "🔗 All submodules clean"
+    fi
+else
+    print_info "🔗 No submodules configured"
+fi
+
+# Changes to be deployed analysis
+TOTAL_CHANGES=$(git status --porcelain | wc -l | tr -d ' ')
+if [ "$TOTAL_CHANGES" -eq 0 ]; then
+    print_warning "No changes detected for deployment"
+    echo ""
+    print_info "Repository is clean. If you intended to deploy changes:"
+    echo "   1. Make your code changes"
+    echo "   2. Update README.md documentation"  
+    echo "   3. Re-run this deployment script"
+    echo ""
+    echo "Exiting gracefully..."
+    exit 0
+fi
+
+print_info "📋 Changes to be deployed ($TOTAL_CHANGES files):"
+git status --short | sed 's/^/   /'
+
+echo ""
+
 # Step 1: Python Environment Validation
 print_status "Step 1: Python Environment Validation"
 
@@ -208,50 +291,222 @@ if [ -f ".gitmodules" ]; then
     git submodule foreach 'git push origin HEAD || true'
 fi
 
-# Step 7: Final Verification
-print_status "Step 7: Final Verification"
+# Step 8: Comprehensive Post-Deployment Verification
+print_status "Step 8: Comprehensive Post-Deployment Verification"
 
 # Verify clean working tree
 FINAL_STATUS=$(git status --porcelain)
 if [ -z "$FINAL_STATUS" ]; then
-    print_success "Working tree clean"
+    print_success "✅ Working tree clean after deployment"
 else
-    print_warning "Working tree not clean after deployment"
+    print_warning "⚠️  Working tree not clean after deployment:"
+    echo "$FINAL_STATUS" | sed 's/^/     /'
 fi
 
-# Check remote sync
-git fetch origin main
+# Check remote sync with detailed analysis
+git fetch origin main --quiet
 LOCAL_HASH=$(git rev-parse HEAD)
 REMOTE_HASH=$(git rev-parse origin/main)
+LOCAL_SHORT=$(git rev-parse --short HEAD)
+REMOTE_SHORT=$(git rev-parse --short origin/main)
 
 if [ "$LOCAL_HASH" = "$REMOTE_HASH" ]; then
     SYNC_STATUS="UP_TO_DATE"
-    print_success "Local and remote in sync"
+    print_success "✅ Local ($LOCAL_SHORT) and remote ($REMOTE_SHORT) in perfect sync"
 else
     SYNC_STATUS="OUT_OF_SYNC"
-    print_warning "Local and remote out of sync"
+    print_warning "⚠️  Sync issue - Local: $LOCAL_SHORT, Remote: $REMOTE_SHORT"
+    
+    NEW_COMMITS_AHEAD=$(git rev-list --count origin/main..HEAD)
+    NEW_COMMITS_BEHIND=$(git rev-list --count HEAD..origin/main)
+    
+    if [ "$NEW_COMMITS_AHEAD" -gt 0 ]; then
+        print_warning "📈 Still $NEW_COMMITS_AHEAD commits ahead - push may have failed"
+    fi
+    
+    if [ "$NEW_COMMITS_BEHIND" -gt 0 ]; then
+        print_warning "📉 Now $NEW_COMMITS_BEHIND commits behind - someone else pushed"
+    fi
 fi
 
-# Submodule verification
+# Comprehensive submodule verification
 if [ -f ".gitmodules" ]; then
-    print_info "Verifying submodule sync..."
+    print_info "🔗 Comprehensive Submodule Verification:"
+    
+    # Current submodule status
+    echo "   📊 Current submodule status:"
+    git submodule status | sed 's/^/     /'
+    
+    # Check for any remaining submodule issues
+    SUBMODULE_ISSUES=$(git submodule foreach --quiet 'git status --porcelain' | wc -l | tr -d ' ')
+    if [ "$SUBMODULE_ISSUES" -eq 0 ]; then
+        print_success "✅ All submodules clean and synced"
+    else
+        print_info "📝 Submodule status details:"
+        git submodule foreach 'echo "  📁 $name:"; git status --short | sed "s/^/     /" || echo "     (clean)"'
+    fi
+    
+    # Show submodule push status (expected to fail for upstream repos)
+    print_info "🚀 Submodule push verification:"
+    git submodule foreach 'echo "  📁 $name push status:"; git log --oneline origin/$(git branch --show-current)..HEAD | sed "s/^/     /" || echo "     ✅ Up to date with origin"'
+else
+    print_info "🔗 No submodules to verify"
+fi
+
+# Repository health check
+print_info "🏥 Repository Health Check:"
+echo "   📁 Total files tracked: $(git ls-files | wc -l | tr -d ' ')"
+echo "   📊 Repository size: $(du -sh .git | cut -f1)"
+echo "   🌿 Active branch: $(git branch --show-current)"
+echo "   📈 Total commits: $(git rev-list --count HEAD)"
+echo "   👤 Last committer: $(git log -1 --pretty=format:'%an <%ae>')"
+echo "   📅 Last commit: $(git log -1 --pretty=format:'%cr (%ci)')"
+
+# Deployment impact analysis
+print_info "📊 Deployment Impact Analysis:"
+if [ -n "$COMMIT_HASH" ]; then
+    echo "   🆔 New commit: $COMMIT_HASH"
+    echo "   📝 Commit message: $COMMIT_TITLE"
+    if [ -n "$COMMIT_DESCRIPTION" ]; then
+        echo "   📄 Description: $COMMIT_DESCRIPTION"
+    fi
+    
+    # Show what files were changed
+    echo "   📁 Files changed in this deployment:"
+    git diff --name-status HEAD~1 | sed 's/^/     /'
+    
+    # Show diff stats
+    echo "   📊 Change statistics:"
+    git diff --stat HEAD~1 | tail -1 | sed 's/^/     /'
+fi
     git submodule status
 fi
 
 echo ""
-echo -e "${CYAN}=== DEPLOYMENT VERIFICATION REPORT ===${NC}"
-echo "--- GIT STATUS ---"
-if [ -z "$FINAL_STATUS" ]; then
-    echo "STATUS: CLEAN"
+echo ""
+echo -e "${CYAN}========================================================================================${NC}"
+echo -e "${CYAN}=== COMPREHENSIVE DEPLOYMENT VERIFICATION REPORT ===${NC}"
+echo -e "${CYAN}========================================================================================${NC}"
+echo ""
+
+# Executive Summary
+echo -e "${BLUE}📋 EXECUTIVE SUMMARY${NC}"
+echo "   🎯 Deployment Target: Marvel Champions BGG Analyzer"
+echo "   📅 Deployment Date: $(date '+%Y-%m-%d %H:%M:%S %Z')"
+echo "   🆔 New Commit Hash: ${COMMIT_HASH:-'N/A'}"
+echo "   📝 Deployment Title: $COMMIT_TITLE"
+echo "   ✅ Overall Status: $([ "$SYNC_STATUS" = "UP_TO_DATE" ] && [ -z "$FINAL_STATUS" ] && echo "SUCCESS" || echo "NEEDS_ATTENTION")"
+echo ""
+
+# Detailed Git Status
+echo -e "${BLUE}📊 DETAILED GIT STATUS${NC}"
+echo "   🌿 Branch: $(git branch --show-current)"
+echo "   🆔 HEAD Commit: $(git rev-parse --short HEAD) ($(git log -1 --pretty=format:'%s'))"
+echo "   🔄 Working Tree: $([ -z "$FINAL_STATUS" ] && echo "CLEAN ✅" || echo "DIRTY ⚠️")"
+if [ -n "$FINAL_STATUS" ]; then
+    echo "   📝 Uncommitted files:"
+    echo "$FINAL_STATUS" | sed 's/^/        /'
+fi
+echo "   🌐 Remote Sync: $SYNC_STATUS $([ "$SYNC_STATUS" = "UP_TO_DATE" ] && echo "✅" || echo "⚠️")"
+echo "   📈 Local Hash: $LOCAL_SHORT"
+echo "   📉 Remote Hash: $REMOTE_SHORT"
+echo ""
+
+# Python Environment Report  
+echo -e "${BLUE}🐍 PYTHON ENVIRONMENT REPORT${NC}"
+echo "   🔧 Virtual Environment: $([ -d ".venv" ] && echo "ACTIVE ✅" || echo "MISSING ❌")"
+echo "   📦 Python Version: $(python3 --version 2>/dev/null || echo "NOT_FOUND")"
+echo "   📋 Dependencies: $(pip3 list 2>/dev/null | wc -l | tr -d ' ') packages installed"
+echo "   🌐 BGG API: $(python3 -c "import requests; r=requests.get('https://boardgamegeek.com/xmlapi2/thing?id=285774', timeout=5); print('ACCESSIBLE ✅' if r.status_code==200 else 'ERROR ❌')" 2>/dev/null || echo "TEST_FAILED ❌")"
+echo ""
+
+# Submodule Status Report
+if [ -f ".gitmodules" ]; then
+    echo -e "${BLUE}🔗 SUBMODULE STATUS REPORT${NC}"
+    echo "   📊 Submodules Configured: $(git config --file .gitmodules --get-regexp submodule | wc -l | tr -d ' ')"
+    
+    git submodule status | while read status; do
+        hash=$(echo "$status" | awk '{print $1}' | sed 's/^[+-]//')
+        path=$(echo "$status" | awk '{print $2}')
+        branch=$(echo "$status" | awk '{print $3}' | sed 's/[()]//')
+        
+        echo "   📁 $path:"
+        echo "      🆔 Hash: ${hash:0:8}"
+        echo "      🌿 Branch: ${branch:-'detached'}"
+        echo "      📊 Status: $(echo "$status" | cut -c1 | sed 's/ /CLEAN ✅/; s/+/NEW_COMMITS ⚠️/; s/-/NOT_INITIALIZED ❌/')"
+    done
+    
+    # Check for submodule changes
+    SUBMODULE_CHANGES=$(git submodule foreach --quiet 'git status --porcelain' | wc -l | tr -d ' ')
+    echo "   📝 Uncommitted Changes: $([ "$SUBMODULE_CHANGES" -eq 0 ] && echo "NONE ✅" || echo "$SUBMODULE_CHANGES files ⚠️")"
 else
-    echo "STATUS: DIRTY"
+    echo -e "${BLUE}🔗 SUBMODULE STATUS REPORT${NC}"
+    echo "   📊 No submodules configured"
+fi
+echo ""
+
+# Deployment Changes Summary
+echo -e "${BLUE}📈 DEPLOYMENT CHANGES SUMMARY${NC}"
+if [ -n "$COMMIT_HASH" ]; then
+    echo "   🆔 Commit: $COMMIT_HASH"
+    echo "   📝 Title: $COMMIT_TITLE"
+    if [ -n "$COMMIT_DESCRIPTION" ]; then
+        echo "   📄 Description: $COMMIT_DESCRIPTION"
+    fi
+    echo "   📁 Files Modified:"
+    git diff --name-status HEAD~1 | sed 's/^/        /'
+    echo "   📊 Change Stats: $(git diff --stat HEAD~1 | tail -1)"
+else
+    echo "   ⚠️  No new commit created (no changes deployed)"
+fi
+echo ""
+
+# Repository Health Metrics
+echo -e "${BLUE}🏥 REPOSITORY HEALTH METRICS${NC}"
+echo "   📁 Total Tracked Files: $(git ls-files | wc -l | tr -d ' ')"
+echo "   📊 Repository Size: $(du -sh .git 2>/dev/null | cut -f1 || echo "Unknown")"
+echo "   📈 Total Commits: $(git rev-list --count HEAD)"
+echo "   👥 Contributors: $(git log --format='%an' | sort -u | wc -l | tr -d ' ')"
+echo "   📅 Last Activity: $(git log -1 --pretty=format:'%cr')"
+echo "   🔧 Git Version: $(git --version)"
+echo ""
+
+# Action Items & Next Steps
+echo -e "${BLUE}🎯 ACTION ITEMS & NEXT STEPS${NC}"
+if [ "$SYNC_STATUS" = "UP_TO_DATE" ] && [ -z "$FINAL_STATUS" ]; then
+    echo "   ✅ Deployment completed successfully!"
+    echo "   ✅ All systems operational"
+    echo "   📋 No action required"
+else
+    echo "   ⚠️  Issues detected requiring attention:"
+    if [ "$SYNC_STATUS" != "UP_TO_DATE" ]; then
+        echo "      🔄 Resolve git sync issues between local and remote"
+    fi
+    if [ -n "$FINAL_STATUS" ]; then
+        echo "      📝 Address uncommitted changes in working tree"
+    fi
 fi
 
+echo "   🌐 Repository URL: https://github.com/josephcasey/marvel-champions-bgg-analyzer"
+echo "   🔗 Latest Commit: https://github.com/josephcasey/marvel-champions-bgg-analyzer/commit/$COMMIT_HASH"
 echo ""
-echo "--- REMOTE SYNC ---"
-echo "SYNC_STATUS: $SYNC_STATUS"
+
+# Final Status Banner
+echo -e "${CYAN}========================================================================================${NC}"
+if [ "$SYNC_STATUS" = "UP_TO_DATE" ] && [ -z "$FINAL_STATUS" ]; then
+    echo -e "${GREEN}🎉 DEPLOYMENT SUCCESSFUL - ALL SYSTEMS OPERATIONAL${NC}"
+else
+    echo -e "${YELLOW}⚠️  DEPLOYMENT COMPLETED WITH ISSUES - REVIEW REQUIRED${NC}"
+fi
+echo -e "${CYAN}========================================================================================${NC}"
 
 echo ""
+print_success "Enhanced deployment completed!"
+print_info "📋 All verification data provided above for review"
+
+# Legacy format for backward compatibility
+echo ""
+echo "--- LEGACY COMPATIBILITY REPORT ---"
 echo "--- SUBMODULES ---"
 if [ -f ".gitmodules" ]; then
     git submodule status | sed 's/^/  /'
