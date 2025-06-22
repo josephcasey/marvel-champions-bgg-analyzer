@@ -83,10 +83,13 @@ except Exception as e:
     print(f'❌ BGG API error: {e}')
     exit(1)
 
-# Test hero list loading
+# Test hero list loading (using actual bggscrape.py method)
 try:
-    with open('marvel_champions_heroes.json', 'r') as f:
-        heroes = json.load(f)
+    import requests
+    url = 'https://github.com/josephcasey/mybgg/raw/refs/heads/master/cached_hero_names.json'
+    response = requests.get(url, timeout=10)
+    response.raise_for_status()
+    heroes = response.json()
     print(f'✅ Official hero list loaded: {len(heroes)} heroes')
 except Exception as e:
     print(f'⚠️  Hero list warning: {e}')
