@@ -1,0 +1,169 @@
+# Test Workflow Command
+
+## Purpose
+Execute Python tests and scripts with proper virtual environment activation for macOS Big Sur compatibility.
+
+## Context
+- macOS Big Sur requires explicit `python3` usage
+- Virtual environment must be activated before running Python scripts
+- Ensures consistent Python execution across development workflows
+
+## Workflow
+
+### 1. Environment Validation
+```bash
+# Check if .venv directory exists
+if [ ! -d ".venv" ]; then
+    echo "❌ Virtual environment not found. Please create one first:"
+    echo "   python3 -m venv .venv"
+    exit 1
+fi
+```
+
+### 2. Virtual Environment Activation
+```bash
+# Activate virtual environment (macOS/Linux)
+source .venv/bin/activate
+
+# Verify activation
+if [ -z "$VIRTUAL_ENV" ]; then
+    echo "❌ Failed to activate virtual environment"
+    exit 1
+fi
+
+echo "✅ Virtual environment activated: $VIRTUAL_ENV"
+```
+
+### 3. Python Version Verification
+```bash
+# Check Python version
+python3 --version
+echo "🐍 Using Python: $(which python3)"
+```
+
+### 4. Test Execution Options
+
+#### For Main Script Testing:
+```bash
+# Run the main BGG scraper script
+echo "🔍 Running BGG scraper analysis..."
+python3 bggscrape.py
+```
+
+#### For Unit Tests (if pytest is available):
+```bash
+# Check if pytest is installed
+if python3 -c "import pytest" 2>/dev/null; then
+    echo "🧪 Running pytest..."
+    python3 -m pytest tests/ -v
+else
+    echo "⚠️  pytest not found. Install with: pip install pytest"
+fi
+```
+
+#### For Code Quality Checks:
+```bash
+# Run flake8 if available
+if python3 -c "import flake8" 2>/dev/null; then
+    echo "🔍 Running code quality checks..."
+    python3 -m flake8 --max-line-length=88 --extend-ignore=E203,W503 *.py
+else
+    echo "💡 Install flake8 for code quality checks: pip install flake8"
+fi
+```
+
+#### For Package Dependencies Check:
+```bash
+# Verify all requirements are installed
+echo "📦 Checking package dependencies..."
+python3 -c "
+import pkg_resources
+import sys
+
+try:
+    with open('requirements.txt', 'r') as f:
+        requirements = f.read().splitlines()
+    
+    for req in requirements:
+        if req.strip() and not req.startswith('#'):
+            try:
+                pkg_resources.require(req.strip())
+                print(f'✅ {req.strip()}')
+            except Exception as e:
+                print(f'❌ {req.strip()}: {e}')
+                sys.exit(1)
+    print('🎉 All dependencies satisfied!')
+except FileNotFoundError:
+    print('⚠️  requirements.txt not found')
+"
+```
+
+## Command Implementation
+
+When user types `/test`, execute this workflow:
+
+1. **Validate Environment Setup**
+   - Check for `.venv` directory
+   - Verify we're in the correct project directory
+
+2. **Activate Virtual Environment**
+   - Use `source .venv/bin/activate`
+   - Verify activation was successful
+
+3. **Run Tests Based on Context**
+   - If `tests/` directory exists: Run pytest
+   - If `bggscrape.py` exists: Run the main script
+   - Always check dependencies
+
+4. **Provide Clear Output**
+   - Color-coded status messages
+   - Clear error reporting
+   - Success confirmations
+
+## Usage Examples
+
+```bash
+# Basic test run
+/test
+
+# Test with specific script
+/test bggscrape.py
+
+# Test with coverage (if available)
+/test --coverage
+
+# Test with verbose output
+/test --verbose
+```
+
+## Error Handling
+
+- **No virtual environment**: Provide setup instructions
+- **Activation fails**: Check Python installation
+- **Missing dependencies**: Show pip install commands
+- **Script errors**: Display full traceback for debugging
+
+## macOS Big Sur Specific Considerations
+
+- Always use `python3` explicitly (not `python`)
+- Ensure virtual environment uses system Python 3.8+
+- Handle potential SSL certificate issues with requests
+- Account for Xcode Command Line Tools dependencies
+
+## Integration with BGG Project
+
+This command is specifically tailored for the Marvel Champions BGG Analyzer project:
+
+- Activates the project's `.venv`
+- Runs `bggscrape.py` with proper environment
+- Checks BGG API connectivity
+- Validates translation service access
+- Tests XML parsing functionality
+
+## Success Criteria
+
+- ✅ Virtual environment successfully activated
+- ✅ Python 3 explicitly used
+- ✅ All dependencies available
+- ✅ Tests pass or script runs successfully
+- ✅ Clear status reporting throughout
