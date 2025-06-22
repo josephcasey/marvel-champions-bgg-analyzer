@@ -157,7 +157,15 @@ This project is open source. Please respect BoardGameGeek's API terms of service
 
 ## 📈 Recent Improvements
 
-### Repository Template Cleanup (Jun 21, 2025) (Latest)
+### Enhanced Agent Rules Integration (Jun 22, 2025) (Latest)
+- 🔧 **SwiftGoNC1-style Integration** - Converted agent-rules to proper git submodule following successful SwiftGoNC1 pattern
+- 🚀 **Enhanced Deployment Script** - New `deploy-changes-enhanced.sh` with comprehensive submodule management and coordination
+- 🔗 **Project Rules Symlink** - Added root-level `project-rules` symlink for better Copilot/Claude accessibility to deployment workflows
+- 📋 **Coordinated Updates** - `/test` and `/deploy` commands now handle both main repository and agent-rules submodule changes
+- ⚡ **Upstream Sync Capability** - Can pull improvements from steipete/agent-rules while preserving custom project rules
+- 📊 **Comprehensive Reporting** - Enhanced deployment verification includes submodule status and git coordination details
+
+### Repository Template Cleanup (Jun 21, 2025) - `eea2d2c`
 - 🧹 **Removed template files** - Deleted unnecessary `FUNDING.yml` and `dependabot.yml` files from `.github/` directory
 - 🎯 **Simplified project structure** - Focused repository on core BGG analysis functionality without template complexity
 - ✅ **Clean starting point** - Eliminated boilerplate files not relevant to this specific project
