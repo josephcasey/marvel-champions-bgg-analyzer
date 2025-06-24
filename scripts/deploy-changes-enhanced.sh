@@ -410,8 +410,7 @@ if [ -n "$COMMIT_HASH" ]; then
     echo "   📊 Change statistics:"
     git diff --stat HEAD~1 | tail -1 | sed 's/^/     /'
 fi
-    git submodule status
-fi
+git submodule status
 
 echo ""
 echo ""
