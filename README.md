@@ -29,8 +29,10 @@ A comprehensive Python tool for analyzing Marvel Champions: The Card Game play d
 ## 🚀 Quick Start
 
 ### Prerequisites
-- Python 3.8+
-- Internet connection (for BGG API and Google Translate)
+- **Python 3.8+**: System Python 3 (tested on macOS Big Sur)
+- **Node.js 18 LTS**: For MCP server development (installed via Homebrew)
+- **Internet connection**: For BGG API and Google Translate
+- **macOS**: Optimized for macOS Big Sur environment
 
 ### Installation
 
@@ -44,13 +46,18 @@ cd marvel-champions-bgg-analyzer
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate  # On macOS/Linux
-# or
-.venv\Scripts\activate     # On Windows
 ```
 
-3. Install dependencies:
+3. Install Python dependencies:
 ```bash
 pip install -r requirements.txt
+```
+
+4. For MCP server development, ensure Node.js 18 is in PATH:
+```bash
+# Node.js 18 should be installed via Homebrew and added to PATH
+node --version  # Should show v18.20.8
+npm --version   # Should show 10.8.2
 ```
 
 ### Usage
@@ -59,8 +66,11 @@ pip install -r requirements.txt
 # Activate virtual environment
 source .venv/bin/activate
 
-# Run the analyzer
+# Run the BGG analyzer
 python3 bggscrape.py
+
+# For deployment (uses enhanced deployment workflow)
+./scripts/deploy-changes-enhanced.sh
 ```
 
 ## 📈 Sample Output
@@ -157,13 +167,19 @@ This project is open source. Please respect BoardGameGeek's API terms of service
 
 ## 📈 Recent Improvements
 
-### Deployment Consistency Rules & Workflow Standardization (Jun 22, 2025) (Latest)
-- 📋 **Deployment Consistency Rules** - Codified mandatory use of `/deploy` workflow instead of direct git commands for all operations
-- 📊 **Comprehensive README Documentation** - Established requirement to document both main repo AND agent-rules submodule changes in single entries
-- 🔧 **Enhanced Deployment Script** - Added comprehensive pre-deployment validation, detailed file change analysis, and complete terminal output
-- 📚 **Agent Rules Workflow Enhancement** - Updated deploy.mdc with Python environment validation rules, troubleshooting guides, and consistency enforcement
-- 🎯 **Process Standardization** - Ensures every deployment follows same validation pattern with complete audit trail and coordination
-- ⚡ **Self-Documenting Deployments** - Terminal output provides all verification data eliminating need for manual confirmation steps
+### Node.js 18 MCP Server Environment Setup (Jun 24, 2025) (Latest)
+- � **Node.js 18 LTS Installation** - Successfully installed Node.js 18.20.8 and npm 10.8.2 via Homebrew for MCP server compatibility
+- � **macOS 11 Compatibility** - Configured Node.js 18 as keg-only installation with proper PATH setup in bash profile
+- � **MCP Development Ready** - Environment now supports Model Context Protocol server development and deployment
+- ⚙️ **PATH Configuration** - Added `/usr/local/opt/node@18/bin` to PATH for consistent Node.js access across terminal sessions
+- 🎯 **Legacy OS Support** - Working solution for Node.js development on macOS Big Sur (Tier 3 Homebrew support)
+
+### Deployment Consistency Rules & Workflow Standardization (Jun 22, 2025)
+- 🚀 **Node.js 18 LTS Installation** - Successfully installed Node.js 18.20.8 and npm 10.8.2 via Homebrew for MCP server compatibility
+- 🔧 **macOS 11 Compatibility** - Configured Node.js 18 as keg-only installation with proper PATH setup in bash profile
+- 📋 **MCP Development Ready** - Environment now supports Model Context Protocol server development and deployment
+- ⚙️ **PATH Configuration** - Added `/usr/local/opt/node@18/bin` to PATH for consistent Node.js access across terminal sessions
+- 🎯 **Legacy OS Support** - Working solution for Node.js development on macOS Big Sur (Tier 3 Homebrew support)
 
 ### Comprehensive Deployment Validation & Agent Rules Workflow (Jun 22, 2025) - `4ce10b5`
 - 📊 **Complete Pre-deployment Validation** - Added extensive git status, branch info, and uncommitted changes analysis before deployment
