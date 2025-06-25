@@ -1,64 +1,106 @@
 # Marvel Champions BGG Project - Copilot Instructions
 
 ## 🎯 **Project Overview**
-Marvel Champions BGG Statistics Tracker - A static web application deployed via GitHub Pages with local Python automation for BGG data syncing.
+Marvel Champions BGG Statistics Analyser - A comprehensive Python tool for analyzing Marvel Champions: The Card Game play data from BoardGameGeek (BGG) with multi-language support, hero disambiguation, and comprehensive analysis features.
 
 ## 💻 **Jo's Development Environment**
 - **OS**: macOS Big Sur
-- **Python**: Always use Python 3 (`python3`, `pip3`); no virtual environments used
-- **Installation**: `pip3 install --user ...`
+- **Python**: Always use Python 3 (`python3`, `pip3`); **MUST use virtual environments** (`.venv`)
+- **Node.js**: 18 LTS (18.20.8) for MCP server development - installed via Homebrew
+- **Package Installation**: Use virtual environment: `source .venv/bin/activate && pip install ...`
 - **Encoding**: UTF-8 encoding and readable print/logging
-- **Testing**: Prefer pytest, flake8 or ruff
+- **Testing**: pytest, flake8, ruff (automated via scripts)
 - **Terminal**: VSCode terminal usage assumed
-- **Dependencies**: Avoid virtualenvs or poetry unless explicitly asked
 
 ## 📋 **Development Guidelines**
 
 ### **File Management:**
-- ✅ Keep all test code in separate `copilot-test` directory
+- ✅ Use virtual environment for ALL Python operations (`.venv` directory)
+- ✅ Keep test code organized in appropriate directories
 - ❌ Do not create new files that supersede existing ones
-- ❌ Do not handle any git operations directly
+- ❌ Do not handle git operations directly (use deployment scripts)
 - ✅ Before making edits, confirm adherence to these instructions
 
+### **Agent Rules Integration:**
+- 🔧 **Submodule Structure**: `agent-rules/` is a git submodule linked to steipete/agent-rules
+- 🔗 **Project Rules Access**: Root-level `project-rules` symlink points to `agent-rules/project-rules/`
+- 📋 **Workflow Rules**: All deployment and testing workflows are defined in agent-rules markdown files
+- 🚀 **Command Pattern**: Use `/deploy` and `/test` commands to trigger automated workflows
+
+### **Required Workflows:**
+
+#### **Testing Workflow (`/test`):**
+- **Script**: `scripts/test.sh` (single consolidated test script)
+- **Triggers**: Environment validation, dependency checks, BGG API connectivity, code quality, pytest execution
+- **Usage**: Always run `/test` before deployment to validate changes
+- **Virtual Environment**: Automatically activates `.venv` and validates Python setup
+
+#### **Deployment Workflow (`/deploy`):**
+- **Two-Step Process**: Documentation update → Enhanced deployment script
+- **Step 1**: AI updates README.md with new improvements entry (reverse chronological)
+- **Step 2**: Run `scripts/deploy-changes-enhanced.sh "title" "description"`
+- **Validation**: Comprehensive pre-deployment checks, git status analysis, submodule coordination
+
 ### **Documentation Updates:**
-- 📝 **ALWAYS update `GITHUB_PAGES_DEPLOYMENT.md`** when making changes to:
-  - Deployment scripts (`update_and_deploy.sh`, `daily_sync.sh`, etc.)
-  - Automation setup (`setup_login_agent.sh`, `remove_login_agent.sh`)
-  - Email functionality or workflow changes
-  - New features or configuration changes
-  - Any changes that affect the user's deployment experience
+- 📝 **ALWAYS update `README.md`** when making changes to:
+  - Core functionality (`bggscrape.py`)
+  - Deployment scripts (`scripts/deploy-changes-enhanced.sh`)
+  - Test scripts (`scripts/test.sh`)
+  - New features, bug fixes, or configuration changes
+  - Any changes that affect user experience
+
+- 📋 **README Structure Requirements**:
+  - Recent Improvements section at END of README
+  - New entries at TOP of Recent Improvements (reverse chronological)
+  - Format: "### [Feature Name] (MMM DD, YYYY)" (no commit hash initially)
+  - Previous entries get commit hash retroactively
+  - Latest entry marked with "(Latest)" suffix
 
 ### **Project Structure:**
-- **Static App**: Hosted on GitHub Pages (HTML/CSS/JS + JSON data)
-- **Python Scripts**: Run locally for BGG data collection and Algolia indexing
-- **Automation**: macOS Launch Agent for daily syncing
-- **Email**: Automated summaries to josephjcasey@gmail.com
+- **Core Script**: `bggscrape.py` - Main BGG data analysis tool
+- **Virtual Environment**: `.venv/` - Python environment (required)
+- **Scripts Directory**: `scripts/` - Deployment and testing automation
+- **Agent Rules**: `agent-rules/` (submodule) + `project-rules` (symlink)
+- **Dependencies**: `requirements.txt` - Python package dependencies
 
-## 🔧 **Key Components to Consider**
+## 🔧 **Key Components**
+
+### **Core Functionality:**
+- **BGG Data Analysis**: Hero usage statistics, multi-language translation support
+- **Hero Disambiguation**: Fuzzy matching with official hero lists
+- **Aspect/Hero Parsing**: Handles all five aspects (Justice, Aggression, Leadership, Protection, Pool)
+- **Data Quality**: Comprehensive debugging and skipped play analysis
 
 ### **Deployment Scripts:**
-- `update_and_deploy.sh` - Interactive data update and GitHub deployment
-- `quick_deploy.sh` - Deploy current files without data update
-- `daily_sync.sh` - Automated daily BGG sync with email notifications
+- **Enhanced Script**: `scripts/deploy-changes-enhanced.sh` - Full deployment automation
+- **Features**: Git validation, submodule coordination, comprehensive reporting
+- **Integration**: Works with agent-rules submodule for workflow consistency
 
-### **Automation:**
-- `setup_login_agent.sh` - Creates macOS Launch Agent for daily automation
-- `remove_login_agent.sh` - Removes automation
-- Launch Agent runs at 8:00 AM daily + on first login after 8 AM
+### **Testing Automation:**
+- **Consolidated Script**: `scripts/test.sh` - Complete test workflow
+- **Coverage**: Environment validation, dependency checks, BGG API connectivity, code quality
+- **Automation**: No user confirmation required, proceeds only if previous steps succeed
 
-### **Documentation:**
-- `GITHUB_PAGES_DEPLOYMENT.md` - **PRIMARY DEPLOYMENT GUIDE** (keep updated!)
-- `RENDER_DEPLOYMENT.md` - Legacy Render deployment info
-- `release_notes.md` - Project changelog
-
-## 📧 **Email System:**
-- Sends daily summaries of BGG sync results
-- Three email types: SUCCESS, NO NEW PLAYS, ALREADY SYNCED
-- Includes play details, hero counts, and collection growth
+### **Environment Setup:**
+- **Python Virtual Environment**: Required for all operations
+- **Node.js 18 LTS**: For MCP server development (PATH configured)
+- **Dependencies**: Automated validation and installation
+- **macOS Optimization**: Tested and optimized for macOS Big Sur
 
 ## 🚨 **Critical Reminders**
-1. **Always update `GITHUB_PAGES_DEPLOYMENT.md`** when modifying deployment workflows
-2. **Test email functionality** with `test_email.sh` when changing email features
-3. **Preserve existing JSON data files** - they contain user's game statistics
-4. **Maintain backward compatibility** with existing automation setup
-5. **Document breaking changes** clearly in deployment guide
+
+1. **Virtual Environment**: Always use `.venv` - never install packages globally
+2. **Agent Rules Compliance**: Follow `/deploy` and `/test` command patterns
+3. **Documentation**: Update README.md for ALL functional changes
+4. **Backward Compatibility**: Maintain compatibility with existing automation
+5. **Two-Step Deployment**: Document first, then deploy via enhanced script
+6. **Testing First**: Always run `/test` before deployment
+7. **Submodule Coordination**: Let deployment script handle agent-rules updates
+
+## 🎯 **Quick Command Reference**
+
+- **Test Everything**: `/test` (runs `scripts/test.sh`)
+- **Deploy Changes**: `/deploy` (two-step process via agent-rules)
+- **Virtual Environment**: `source .venv/bin/activate`
+- **Main Analysis**: `python3 bggscrape.py` (after venv activation)
+- **Dependencies**: `pip install -r requirements.txt` (in venv)

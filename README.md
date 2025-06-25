@@ -180,7 +180,15 @@ This project is open source. Please respect BoardGameGeek's API terms of service
 - ⚙️ **PATH Configuration** - Added `/usr/local/opt/node@18/bin` to PATH for consistent Node.js access across terminal sessions
 - 🎯 **Legacy OS Support** - Working solution for Node.js development on macOS Big Sur (Tier 3 Homebrew support)
 
-### Deployment Consistency Rules & Workflow Standardization (Jun 22, 2025)
+### Copilot Instructions Comprehensive Update (Jun 25, 2025) (Latest)
+- 📋 **Complete Documentation Overhaul** - Fully updated `.github/copilot-instructions.md` with comprehensive project overview, accurate environment setup, and current workflow patterns
+- 🔧 **Agent Rules Integration Documentation** - Added detailed explanation of submodule structure, symlink access, and `/deploy`/`/test` command patterns
+- 🎯 **Virtual Environment Requirements** - Emphasized mandatory `.venv` usage with clear setup instructions and package installation guidelines
+- 📊 **Current Workflow Alignment** - Documented two-step deployment process, consolidated test script automation, and README update requirements
+- 🚀 **Environment Accuracy** - Updated Node.js 18 LTS details, macOS Big Sur optimization, and MCP server development setup
+- ✅ **Command Reference Added** - Practical quick reference for common operations including testing, deployment, and environment management
+
+### Deployment Consistency Rules & Workflow Standardization (Jun 22, 2025) - `80f13cd`
 - 🚀 **Node.js 18 LTS Installation** - Successfully installed Node.js 18.20.8 and npm 10.8.2 via Homebrew for MCP server compatibility
 - 🔧 **macOS 11 Compatibility** - Configured Node.js 18 as keg-only installation with proper PATH setup in bash profile
 - 📋 **MCP Development Ready** - Environment now supports Model Context Protocol server development and deployment

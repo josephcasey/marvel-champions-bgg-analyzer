@@ -97,11 +97,14 @@ except FileNotFoundError:
 "
     
     # Handle missing packages
-    if [ $? -eq 2 ]; then
+    DEPS_EXIT_CODE=$?
+    if [ $DEPS_EXIT_CODE -eq 2 ]; then
         print_status $YELLOW "📥 Installing missing packages..."
         pip install -r requirements.txt
         print_status $GREEN "✅ Dependencies installed"
-    elif [ $? -ne 0 ]; then
+    elif [ $DEPS_EXIT_CODE -eq 0 ]; then
+        print_status $GREEN "✅ All dependencies verified"
+    else
         print_error "❌ Dependency check failed"
     fi
 else

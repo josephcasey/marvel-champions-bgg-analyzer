@@ -1114,20 +1114,71 @@ def clean_hero_name(raw_name):
     if re.match(r'^(Team\s*\d+|팀\s*\d+|Team\s*[A-Z]?)$', name, re.IGNORECASE):
         return ""
     
+    # Define all Marvel Champions aspects (including Pool)
+    aspects = ['Justice', 'Aggression', 'Leadership', 'Protection', 'Pool']
+    aspect_pattern = '|'.join([f'({asp})' for asp in aspects])
+    
     # Handle special cases first
     # Extract hero name from "Aspect: X／Hero" format
     aspect_match = re.match(r'^Aspect:\s*[^／]+／(.+)$', name)
     if aspect_match:
         name = aspect_match.group(1).strip()
     
-    # Remove aspect information
+    # Enhanced aspect-hero parsing patterns
+    aspect_hero_patterns = [
+        # "Aspect／Hero" or "Aspect/Hero" - extract hero
+        rf'^(?:{aspect_pattern})／(.+)$',
+        rf'^(?:{aspect_pattern})/(.+)$',
+        
+        # "Hero／Aspect" or "Hero/Aspect" - extract hero  
+        rf'^(.+)／(?:{aspect_pattern})(?:\s|$)',
+        rf'^(.+)/(?:{aspect_pattern})(?:\s|$)',
+        
+        # "Aspect - Hero" or "Hero - Aspect" formats
+        rf'^(?:{aspect_pattern})\s*[-–]\s*(.+)$',
+        rf'^(.+)\s*[-–]\s*(?:{aspect_pattern})(?:\s|$)',
+        
+        # "Aspect Hero" or "Hero Aspect" (space separated)
+        rf'^(?:{aspect_pattern})\s+(.+)$',
+        rf'^(.+)\s+(?:{aspect_pattern})(?:\s|$)',
+        
+        # ".Aspect／Hero" format (like ".Aggression／-Gambit")
+        rf'^\.(?:{aspect_pattern})／[-]?(.+)$',
+        rf'^\.(?:{aspect_pattern})/[-]?(.+)$',
+        
+        # Handle prefixed hero names like "-Gambit"
+        r'^[-](.+)$',
+    ]
+    
+    # Try each pattern to extract hero name
+    for pattern in aspect_hero_patterns:
+        match = re.match(pattern, name, re.IGNORECASE)
+        if match:
+            # Find the capture group that contains the hero name (not empty and not an aspect)
+            for group in match.groups():
+                if group and group.strip():
+                    candidate = group.strip()
+                    # Make sure it's not just an aspect name
+                    if not re.match(rf'^(?:{aspect_pattern})$', candidate, re.IGNORECASE):
+                        name = candidate
+                        break
+            break
+    
+    # Additional cleanup patterns
     name = re.sub(r'／.*$', '', name)  # Remove everything after ／
     name = re.sub(r'/.*$', '', name)  # Remove everything after /
-    name = re.sub(r'\s*-\s*(Aggr|Prot|Just|Lead|Leadership|Justice|Protection|Aggression).*$', '', name, re.IGNORECASE)
+    name = re.sub(r'\s*-\s*(Aggr|Prot|Just|Lead|Leadership|Justice|Protection|Aggression|Pool).*$', '', name, re.IGNORECASE)
     name = re.sub(r'\s*\(.*\).*$', '', name)  # Remove parenthetical info
     name = re.sub(r'ASPECT:.*', '', name, re.IGNORECASE)  # Remove aspect info
     name = re.sub(r'Team\s*\d+.*', '', name, re.IGNORECASE)  # Remove team numbers
     name = re.sub(r'팀\s*\d+.*', '', name)  # Remove Korean team numbers
+    
+    # Handle specific problematic patterns
+    # "Justice Maria Hill" -> "Maria Hill"
+    name = re.sub(rf'^(?:{aspect_pattern})\s+(.+)$', r'\6', name, re.IGNORECASE)
+    
+    # "Bishop Justice" -> "Bishop" (if Justice is at the end)
+    name = re.sub(rf'^(.+)\s+(?:{aspect_pattern})$', r'\1', name, re.IGNORECASE)
     
     # Clean up spacing
     name = re.sub(r'\s+', ' ', name).strip()
@@ -1336,14 +1387,14 @@ def parse_heroes_from_comments(comments, play_id=None):
         r'\b([a-z\-\s]+)\s+vs?\s+[a-z\-\s]+\b',
         
         # Pattern for "Hero (Aspect)" format
-        r'\b([a-z\-\s]+)\s*\([^)]*(?:aggression|justice|protection|leadership)[^)]*\)',
+        r'\b([a-z\-\s]+)\s*\([^)]*(?:aggression|justice|protection|leadership|pool)[^)]*\)',
         
         # Pattern for "Hero - Aspect" format  
-        r'\b([a-z\-\s]+)\s*[-–]\s*(?:aggression|justice|protection|leadership)\b',
+        r'\b([a-z\-\s]+)\s*[-–]\s*(?:aggression|justice|protection|leadership|pool)\b',
         
         # Pattern for aspect notation like "Justice／She-hulk"
-        r'(?:aggression|justice|protection|leadership)／([a-z\-\s]+)',
-        r'([a-z\-\s]+)／(?:aggression|justice|protection|leadership)',
+        r'(?:aggression|justice|protection|leadership|pool)／([a-z\-\s]+)',
+        r'([a-z\-\s]+)／(?:aggression|justice|protection|leadership|pool)',
         
         # Pattern for hero combinations with "&" or "and"
         r'\b([a-z\-\s]+)\s*[&+]\s*([a-z\-\s]+)',
