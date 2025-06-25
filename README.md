@@ -180,7 +180,15 @@ This project is open source. Please respect BoardGameGeek's API terms of service
 - ⚙️ **PATH Configuration** - Added `/usr/local/opt/node@18/bin` to PATH for consistent Node.js access across terminal sessions
 - 🎯 **Legacy OS Support** - Working solution for Node.js development on macOS Big Sur (Tier 3 Homebrew support)
 
-### Non-Interactive Deployment Automation (Jun 25, 2025) (Latest)
+### Enhanced BGG Analyzer Performance & CLI Features (Jun 25, 2025) (Latest)
+- 🚀 **1000 Play Processing** - Successfully processes up to 1000 plays per user with efficient memory management and progress indicators
+- 💻 **Command Line Interface** - Added CLI arguments: `--plays` (play limit), `--delay` (API delay), `--debug` (verbose), `--quiet` (minimal output)
+- 📊 **Progress Tracking** - Real-time progress reporting for large datasets with batch intervals and completion percentages
+- 🔧 **Performance Optimization** - Dynamic API delay scaling for large datasets, network error handling with automatic retries
+- 🎯 **Enhanced User Experience** - Clear configuration display, estimated completion times, and color-coded status indicators
+- ✅ **Production Ready** - Robust error handling, memory optimization, and comprehensive analysis with 81.3% play success rate
+
+### Non-Interactive Deployment Automation (Jun 25, 2025) - `645fb99`
 - 🔧 **Automated Git Operations** - Enhanced deployment script with completely non-interactive git configuration to prevent editor prompts during submodule merges
 - 🚫 **Editor-Free Workflow** - Added global git editor configuration (`GIT_EDITOR=true`) and merge auto-edit settings (`GIT_MERGE_AUTOEDIT=no`) for fully automated deployment
 - 🔄 **Submodule Merge Improvements** - Replaced problematic `git submodule update --remote --merge` with individual submodule handling using `--no-edit` flags

@@ -3,6 +3,8 @@ import requests
 import re
 import time
 import json
+import argparse
+import sys
 from googletrans import Translator
 from collections import Counter, defaultdict
 
@@ -36,6 +38,11 @@ def status_colored_print(original, translated, status_info):
         colored_print(f"  ✅ Official Match: '{original}'", Colors.GREEN)
     else:
         colored_print(f"  ❌ Unmatched: '{original}' → '{translated}'", Colors.RED)
+
+# Configuration settings
+PLAY_LIMIT = 1000  # Maximum number of plays to analyze per user (configurable)
+API_DELAY = 1.0    # Delay between API calls to be respectful to BGG servers
+BATCH_PROGRESS_INTERVAL = 100  # Show progress every N plays for large datasets
 
 # Configuration for debug output
 TERMINAL_DEBUG = True  # Set to True to enable detailed XML dumps and verbose output
@@ -350,16 +357,21 @@ def extract_usernames_from_plays(root):
             userids.append(userid)
     return list(set(userids))  # Remove duplicates
 
-def fetch_user_plays_by_userid_direct(userid, max_plays=100):
+def fetch_user_plays_by_userid_direct(userid, max_plays=PLAY_LIMIT):
     """Fetch up to max_plays for a specific user using direct user plays API"""
     all_plays = []
     page = 1
     plays_fetched = 0
     
     print(f"Fetching plays for user ID: {userid} using direct user API")
+    colored_print(f"🎯 Target: {max_plays} plays (will stop early if user has fewer)", Colors.CYAN)
     
     while plays_fetched < max_plays:
         try:
+            # Show progress for large datasets
+            if max_plays >= 500 and page % 5 == 1 and page > 1:
+                colored_print(f"📊 Progress: Fetched {plays_fetched}/{max_plays} plays ({plays_fetched/max_plays*100:.1f}%)", Colors.CYAN)
+            
             print(f"  Fetching page {page}...")
             # Try using the user-specific plays endpoint
             url = f"https://boardgamegeek.com/xmlapi2/plays?userid={userid}&id=285774&page={page}"
@@ -395,14 +407,19 @@ def fetch_user_plays_by_userid_direct(userid, max_plays=100):
                 
             page += 1
             
-            # Be respectful to the API
-            time.sleep(1)
+            # Be respectful to the API - adjust delay for larger datasets
+            api_delay = API_DELAY if max_plays <= 500 else min(API_DELAY * 1.5, 2.0)
+            time.sleep(api_delay)
             
+        except requests.exceptions.RequestException as e:
+            colored_print(f"⚠️  Network error on page {page}: {e}", Colors.YELLOW)
+            colored_print("🔄 Retrying in 5 seconds...", Colors.CYAN)
+            time.sleep(5)
         except Exception as e:
             print(f"Error fetching page {page}: {e}")
             break
     
-    print(f"Total Marvel Champions plays fetched for user {userid}: {plays_fetched}")
+    colored_print(f"✅ Total Marvel Champions plays fetched for user {userid}: {plays_fetched}", Colors.GREEN)
     return all_plays
 
 def extract_hero_mentions(root):
@@ -447,8 +464,14 @@ def extract_hero_names_from_plays(plays_list):
     total_players_with_color = 0
     
     colored_print("🎯 Extracting and translating hero names...", Colors.CYAN)
+    if total_plays >= 500:
+        colored_print(f"📊 Processing {total_plays} plays (large dataset - progress will be shown every {BATCH_PROGRESS_INTERVAL} plays)", Colors.CYAN)
     
-    for play in plays_list:
+    for play_index, play in enumerate(plays_list):
+        # Show progress for large datasets
+        if total_plays >= 500 and (play_index + 1) % BATCH_PROGRESS_INTERVAL == 0:
+            colored_print(f"📊 Progress: Processed {play_index + 1}/{total_plays} plays ({(play_index + 1)/total_plays*100:.1f}%)", Colors.CYAN)
+        
         play_id = play.get('id')
         play_date = play.get('date')
         userid = play.get('userid')
@@ -1464,6 +1487,56 @@ def parse_heroes_from_comments(comments, play_id=None):
         
     return unique_heroes
 
+def parse_arguments():
+    """Parse command line arguments"""
+    parser = argparse.ArgumentParser(
+        description='Marvel Champions BGG Data Analyzer - Analyze hero usage from BoardGameGeek plays',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+    )
+    parser.add_argument(
+        '--plays', '-p',
+        type=int,
+        default=PLAY_LIMIT,
+        help='Maximum number of plays to analyze per user'
+    )
+    parser.add_argument(
+        '--delay', '-d',
+        type=float,
+        default=API_DELAY,
+        help='Delay between API calls in seconds'
+    )
+    parser.add_argument(
+        '--debug', '-v',
+        action='store_true',
+        help='Enable verbose debug output'
+    )
+    parser.add_argument(
+        '--quiet', '-q',
+        action='store_true',
+        help='Minimize output (only show summary)'
+    )
+    return parser.parse_args()
+
+# Parse command line arguments
+args = parse_arguments()
+
+# Update configuration based on arguments
+PLAY_LIMIT = args.plays
+API_DELAY = args.delay
+TERMINAL_DEBUG = args.debug and not args.quiet
+
+# Display configuration
+if not args.quiet:
+    colored_print("=" * 60, Colors.CYAN)
+    colored_print("🎯 MARVEL CHAMPIONS BGG ANALYZER", Colors.BOLD)
+    colored_print("=" * 60, Colors.CYAN)
+    colored_print(f"📊 Configuration:", Colors.CYAN)
+    colored_print(f"   • Max plays per user: {PLAY_LIMIT}", Colors.CYAN)
+    colored_print(f"   • API delay: {API_DELAY}s", Colors.CYAN)
+    colored_print(f"   • Debug mode: {'ON' if TERMINAL_DEBUG else 'OFF'}", Colors.CYAN)
+    colored_print(f"   • Estimated time: ~{PLAY_LIMIT/100 * API_DELAY:.1f}s for API calls", Colors.CYAN)
+    colored_print("=" * 60, Colors.CYAN)
+
 # First, get some recent plays to find active users
 colored_print("🔍 Fetching recent plays to find active users...", Colors.CYAN)
 root = fetch_plays_xml(page=1)
@@ -1476,8 +1549,8 @@ if userids:
     first_userid = userids[0]
     colored_print(f"\n🎯 Analyzing plays for first user ID: {first_userid}", Colors.BOLD)
     
-    # Fetch up to 100 plays for the first user using direct API
-    user_plays = fetch_user_plays_by_userid_direct(first_userid, max_plays=100)
+    # Fetch up to PLAY_LIMIT plays for the first user using direct API
+    user_plays = fetch_user_plays_by_userid_direct(first_userid, max_plays=PLAY_LIMIT)
     
     if user_plays:
         # Analyze hero names from Team/Color fields
