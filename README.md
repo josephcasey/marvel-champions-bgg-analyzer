@@ -180,7 +180,14 @@ This project is open source. Please respect BoardGameGeek's API terms of service
 - ⚙️ **PATH Configuration** - Added `/usr/local/opt/node@18/bin` to PATH for consistent Node.js access across terminal sessions
 - 🎯 **Legacy OS Support** - Working solution for Node.js development on macOS Big Sur (Tier 3 Homebrew support)
 
-### Copilot Instructions Comprehensive Update (Jun 25, 2025) (Latest)
+### Non-Interactive Deployment Automation (Jun 25, 2025) (Latest)
+- 🔧 **Automated Git Operations** - Enhanced deployment script with completely non-interactive git configuration to prevent editor prompts during submodule merges
+- 🚫 **Editor-Free Workflow** - Added global git editor configuration (`GIT_EDITOR=true`) and merge auto-edit settings (`GIT_MERGE_AUTOEDIT=no`) for fully automated deployment
+- 🔄 **Submodule Merge Improvements** - Replaced problematic `git submodule update --remote --merge` with individual submodule handling using `--no-edit` flags
+- 🧹 **Configuration Cleanup** - Added proper cleanup function with EXIT trap to restore git settings after deployment completion
+- ✅ **Zero-Interaction Deployment** - Deployment workflow now runs completely hands-free without requiring terminal interaction for commit messages
+
+### Copilot Instructions Comprehensive Update (Jun 25, 2025) - `645fb99`
 - 📋 **Complete Documentation Overhaul** - Fully updated `.github/copilot-instructions.md` with comprehensive project overview, accurate environment setup, and current workflow patterns
 - 🔧 **Agent Rules Integration Documentation** - Added detailed explanation of submodule structure, symlink access, and `/deploy`/`/test` command patterns
 - 🎯 **Virtual Environment Requirements** - Emphasized mandatory `.venv` usage with clear setup instructions and package installation guidelines
