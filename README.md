@@ -180,7 +180,7 @@ This project is open source. Please respect BoardGameGeek's API terms of service
 - ⚙️ **PATH Configuration** - Added `/usr/local/opt/node@18/bin` to PATH for consistent Node.js access across terminal sessions
 - 🎯 **Legacy OS Support** - Working solution for Node.js development on macOS Big Sur (Tier 3 Homebrew support)
 
-### Enhanced BGG Analyzer Performance & CLI Features (Jun 25, 2025) (Latest)
+### Enhanced BGG Analyzer Performance & CLI Features (Jun 25, 2025) - `126013d`
 - 🚀 **1000 Play Processing** - Successfully processes up to 1000 plays per user with efficient memory management and progress indicators
 - 💻 **Command Line Interface** - Added CLI arguments: `--plays` (play limit), `--delay` (API delay), `--debug` (verbose), `--quiet` (minimal output)
 - 📊 **Progress Tracking** - Real-time progress reporting for large datasets with batch intervals and completion percentages
