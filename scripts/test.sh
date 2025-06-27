@@ -190,7 +190,8 @@ fi
 # Run the main BGG scraper script
 print_status $CYAN "🔍 Running BGG scraper analysis..."
 echo "=================== BGG ANALYZER OUTPUT ==================="
-python3 bggscrape.py
+# Run with verbose output: pass --debug to main script
+python3 bggscrape.py --debug
 SCRIPT_EXIT_CODE=$?
 echo "==========================================================="
 

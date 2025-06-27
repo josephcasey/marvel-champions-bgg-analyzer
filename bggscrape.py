@@ -22,6 +22,48 @@ class Colors:
     BOLD = '\033[1m'        # Bold text
     RESET = '\033[0m'       # Reset to default
 
+def safe_api_call(url, headers=None, max_retries=3):
+    """Make a safe API call with rate limiting, retry logic, and call counting"""
+    global api_call_count
+    
+    # Check if we've reached the maximum API call limit
+    if api_call_count >= MAX_TOTAL_API_CALLS:
+        colored_print(f"🛑 Reached maximum API call limit ({MAX_TOTAL_API_CALLS}). Stopping to be respectful to BGG servers.", Colors.YELLOW)
+        raise Exception(f"API call limit reached ({MAX_TOTAL_API_CALLS})")
+    
+    if headers is None:
+        headers = {"User-Agent": "Mozilla/5.0 (BGG Marvel Champions Analyzer - Respectful Bot)"}
+    
+    for attempt in range(max_retries):
+        try:
+            # Increment API call counter
+            api_call_count += 1
+            
+            if TERMINAL_DEBUG and api_call_count % 10 == 0:
+                colored_print(f"📊 API calls made: {api_call_count}/{MAX_TOTAL_API_CALLS}", Colors.CYAN)
+            
+            # Make the API call
+            response = requests.get(url, headers=headers)
+            response.raise_for_status()
+            
+            # Apply base delay
+            time.sleep(API_DELAY)
+            
+            return response
+            
+        except requests.exceptions.RequestException as e:
+            if attempt < max_retries - 1:
+                # Calculate exponential backoff delay
+                backoff_delay = API_DELAY * (BACKOFF_MULTIPLIER ** attempt)
+                colored_print(f"⚠️  API call failed (attempt {attempt + 1}/{max_retries}): {e}", Colors.YELLOW)
+                colored_print(f"🔄 Retrying in {backoff_delay:.1f} seconds...", Colors.CYAN)
+                time.sleep(backoff_delay)
+            else:
+                colored_print(f"❌ API call failed after {max_retries} attempts: {e}", Colors.RED)
+                raise
+    
+    return None
+
 def colored_print(text, color=Colors.RESET):
     """Print text with color"""
     print(f"{color}{text}{Colors.RESET}")
@@ -39,13 +81,20 @@ def status_colored_print(original, translated, status_info):
     else:
         colored_print(f"  ❌ Unmatched: '{original}' → '{translated}'", Colors.RED)
 
-# Configuration settings
-PLAY_LIMIT = 1000  # Maximum number of plays to analyze per user (configurable)
-API_DELAY = 1.0    # Delay between API calls to be respectful to BGG servers
-BATCH_PROGRESS_INTERVAL = 100  # Show progress every N plays for large datasets
+# Configuration settings for API rate limiting and resource management
+PLAY_LIMIT = 300   # Maximum number of plays to analyze per user (reduced for better performance)
+API_DELAY = 1.5    # Delay between API calls to be respectful to BGG servers (increased)
+MAX_USERS = 20     # Maximum number of users to analyze (conservative default)
+MAX_TOTAL_API_CALLS = 100  # Maximum total API calls per run (safety limit)
+MAX_RETRIES = 3    # Maximum retries for failed API calls
+BACKOFF_MULTIPLIER = 2.0  # Exponential backoff multiplier for retries
+BATCH_PROGRESS_INTERVAL = 50  # Show progress every N plays for large datasets (more frequent)
 
 # Configuration for debug output
 TERMINAL_DEBUG = True  # Set to True to enable detailed XML dumps and verbose output
+
+# Global counter for API calls (for monitoring and limiting)
+api_call_count = 0
 
 # Load official hero names from the GitHub repository
 def load_official_hero_names():
@@ -339,14 +388,102 @@ def translate_hero_name(hero_name):
         return hero_name, False
 
 def fetch_plays_xml(page=1, username=None):
+    """Fetch plays XML using safe API call wrapper"""
     if username:
         url = f"https://boardgamegeek.com/xmlapi2/plays?username={username}&id=285774&page={page}"
     else:
         url = f"https://boardgamegeek.com/xmlapi2/plays?id=285774&page={page}"
-    headers = {"User-Agent": "Mozilla/5.0"}
-    response = requests.get(url, headers=headers)
-    response.raise_for_status()
+    
+    response = safe_api_call(url)
+    if response is None:
+        raise Exception("Failed to fetch plays XML after retries")
     return ET.fromstring(response.content)
+
+def fetch_monthly_play_stats(year=2025, month=6):
+    """Fetch active users from BGG plays API for a specific month using official XML API"""
+    import time
+    from datetime import datetime, timedelta
+    
+    colored_print(f"📡 Using BGG XML API to find users active in {year}-{month:02d}", Colors.CYAN)
+    
+    # Calculate date range for the target month
+    start_date = f"{year}-{month:02d}-01"
+    if month == 12:
+        end_date = f"{year + 1}-01-01"
+    else:
+        end_date = f"{year}-{month + 1:02d}-01"
+    
+    colored_print(f"🗓️ Searching for plays between {start_date} and {end_date}", Colors.CYAN)
+    
+    user_ids = set()
+    page = 1
+    max_pages = 5  # Reduced from 10 to be more conservative
+    plays_found = 0
+    target_month_plays = 0
+    
+    try:
+        while page <= max_pages:
+            colored_print(f"� Fetching page {page} of recent Marvel Champions plays...", Colors.CYAN)
+            
+            # Use the official BGG XML API for plays with safe API wrapper
+            url = f"https://boardgamegeek.com/xmlapi2/plays?id=285774&page={page}"
+            
+            response = safe_api_call(url)
+            if response is None:
+                colored_print(f"❌ Failed to fetch page {page} after retries", Colors.RED)
+                break
+            
+            # Parse XML response
+            root = ET.fromstring(response.content)
+            plays = root.findall("play")
+            
+            if not plays:
+                colored_print(f"📄 No more plays found on page {page}", Colors.YELLOW)
+                break
+                
+            plays_found += len(plays)
+            page_target_plays = 0
+            
+            for play in plays:
+                play_date = play.get("date")
+                userid = play.get("userid")
+                
+                # Check if play is in target month
+                if play_date and play_date.startswith(f"{year}-{month:02d}"):
+                    if userid:
+                        user_ids.add(userid)
+                        target_month_plays += 1
+                        page_target_plays += 1
+                elif play_date and play_date < start_date:
+                    # We've gone past our target month (plays are in reverse chronological order)
+                    colored_print(f"🎯 Reached plays before {start_date}, stopping search", Colors.CYAN)
+                    break
+            
+            colored_print(f"✅ Page {page}: {len(plays)} plays total, {page_target_plays} from {year}-{month:02d}", Colors.GREEN)
+            
+            # If we found no plays from target month on this page, and we have some users already, stop
+            if page_target_plays == 0 and target_month_plays > 0:
+                colored_print(f"🎯 No more plays from target month found, stopping search", Colors.CYAN)
+                break
+                
+            page += 1
+            # API delay is now handled in safe_api_call function
+            
+        colored_print(f"� Final results:", Colors.BOLD)
+        colored_print(f"   • Total plays scanned: {plays_found}", Colors.CYAN)
+        colored_print(f"   • Plays from {year}-{month:02d}: {target_month_plays}", Colors.CYAN)
+        colored_print(f"   • Unique users from {year}-{month:02d}: {len(user_ids)}", Colors.CYAN)
+        
+        if user_ids:
+            sample_users = list(user_ids)[:10]
+            colored_print(f"   • Sample user IDs: {sample_users}{'...' if len(user_ids) > 10 else ''}", Colors.CYAN)
+        
+        return list(user_ids), []  # Return user IDs, empty usernames list since we have IDs directly
+        
+    except Exception as e:
+        colored_print(f"❌ Error fetching monthly plays via XML API: {e}", Colors.RED)
+        colored_print("🔄 Falling back to general recent plays", Colors.YELLOW)
+        return [], []
 
 def extract_usernames_from_plays(root):
     """Extract usernames/userids from plays XML"""
@@ -373,11 +510,12 @@ def fetch_user_plays_by_userid_direct(userid, max_plays=PLAY_LIMIT):
                 colored_print(f"📊 Progress: Fetched {plays_fetched}/{max_plays} plays ({plays_fetched/max_plays*100:.1f}%)", Colors.CYAN)
             
             print(f"  Fetching page {page}...")
-            # Try using the user-specific plays endpoint
+            # Try using the user-specific plays endpoint with safe API wrapper
             url = f"https://boardgamegeek.com/xmlapi2/plays?userid={userid}&id=285774&page={page}"
-            headers = {"User-Agent": "Mozilla/5.0"}
-            response = requests.get(url, headers=headers)
-            response.raise_for_status()
+            response = safe_api_call(url)
+            if response is None:
+                colored_print(f"❌ Failed to fetch page {page} for user {userid} after retries", Colors.RED)
+                break
             root = ET.fromstring(response.content)
             
             plays = root.findall("play")
@@ -407,9 +545,7 @@ def fetch_user_plays_by_userid_direct(userid, max_plays=PLAY_LIMIT):
                 
             page += 1
             
-            # Be respectful to the API - adjust delay for larger datasets
-            api_delay = API_DELAY if max_plays <= 500 else min(API_DELAY * 1.5, 2.0)
-            time.sleep(api_delay)
+            # Note: API delay is now handled in safe_api_call function
             
         except requests.exceptions.RequestException as e:
             colored_print(f"⚠️  Network error on page {page}: {e}", Colors.YELLOW)
@@ -667,38 +803,39 @@ def extract_hero_names_from_plays(plays_list):
                         
                         if TERMINAL_DEBUG:
                             status_colored_print(hero_data['original'], hero_name, status)
-                    
-                    # Don't skip this record since we found heroes
-                    continue
-                else:
-                    # Track players with empty color field and no heroes in comments
-                    if TERMINAL_DEBUG:
-                        colored_print(f"\n🚫 SKIPPED - Empty Color Field:", Colors.MAGENTA)
-                        colored_print(f"   Play ID: {play_id} | Date: {play_date}", Colors.CYAN)
-                        colored_print(f"   Raw Player XML:", Colors.YELLOW)
-                        # Convert player element to string for full XML dump
-                        player_xml_str = ET.tostring(player, encoding='unicode', method='xml')
-                        colored_print(f"   {player_xml_str}", Colors.YELLOW)
-                        colored_print(f"   Player Attributes: {player.attrib}", Colors.CYAN)
-                        if comments:
-                            colored_print(f"   📄 FULL COMMENTS:", Colors.CYAN)
-                            colored_print(f"   {comments}", Colors.CYAN)
-                        else:
-                            colored_print(f"   📄 No comments in this play", Colors.CYAN)
-                        colored_print(f"   📝 No heroes found in comments either", Colors.RED)
-                        colored_print(f"   🔗 BGG Play Link: https://boardgamegeek.com/play/{play_id}", Colors.BLUE)
-                    
-                    skipped_plays['empty_color'].append({
-                        'play_id': play_id,
-                        'play_date': play_date,
-                        'userid': userid,
-                        'comments': comments,
-                        'player_xml': player.attrib,
-                        'full_xml': ET.tostring(player, encoding='unicode', method='xml'),
-                        'reason': 'Empty color field, no heroes in comments'
-                    })
-                    continue
                 
+                # Don't skip this record since we found heroes
+                plays_with_players += 1  # Count as having usable data
+                continue
+            else:
+                # Track players with empty color field and no heroes in comments
+                if TERMINAL_DEBUG:
+                    colored_print(f"\n🚫 SKIPPED - Empty Color Field:", Colors.MAGENTA)
+                    colored_print(f"   Play ID: {play_id} | Date: {play_date}", Colors.CYAN)
+                    colored_print(f"   Raw Player XML:", Colors.YELLOW)
+                    # Convert player element to string for full XML dump
+                    player_xml_str = ET.tostring(player, encoding='unicode', method='xml')
+                    colored_print(f"   {player_xml_str}", Colors.YELLOW)
+                    colored_print(f"   Player Attributes: {player.attrib}", Colors.CYAN)
+                    if comments:
+                        colored_print(f"   📄 FULL COMMENTS:", Colors.CYAN)
+                        colored_print(f"   {comments}", Colors.CYAN)
+                    else:
+                        colored_print(f"   📄 No comments in this play", Colors.CYAN)
+                    colored_print(f"   📝 No heroes found in comments either", Colors.RED)
+                    colored_print(f"   🔗 BGG Play Link: https://boardgamegeek.com/play/{play_id}", Colors.BLUE)
+                
+                skipped_plays['empty_color'].append({
+                    'play_id': play_id,
+                    'play_date': play_date,
+                    'userid': userid,
+                    'comments': comments,
+                    'player_xml': player.attrib,
+                    'full_xml': ET.tostring(player, encoding='unicode', method='xml'),
+                    'reason': 'Empty color field, no heroes in comments'
+                })
+                continue
+            
             total_players_with_color += 1
             
             # Clean up the hero name (remove extra info like aspects, team numbers, etc.)
@@ -746,39 +883,39 @@ def extract_hero_names_from_plays(plays_list):
                         
                         if TERMINAL_DEBUG:
                             status_colored_print(hero_data['original'], hero_name, status)
-                    
-                    # Don't skip this record since we found heroes
-                    continue
-                else:
-                    # No heroes found in comments either, skip as meaningless
-                    if TERMINAL_DEBUG:
-                        colored_print(f"\n🚫 SKIPPED - Meaningless Name:", Colors.MAGENTA)
-                        colored_print(f"   Play ID: {play_id} | Date: {play_date}", Colors.CYAN)
-                        colored_print(f"   Original Color: '{color}'", Colors.YELLOW)
-                        colored_print(f"   Cleaned Name: '{cleaned_name}'", Colors.YELLOW)
-                        colored_print(f"   Raw Player XML:", Colors.YELLOW)
-                        player_xml_str = ET.tostring(player, encoding='unicode', method='xml')
-                        colored_print(f"   {player_xml_str}", Colors.YELLOW)
-                        if comments:
-                            colored_print(f"   📄 FULL COMMENTS:", Colors.CYAN)
-                            colored_print(f"   {comments}", Colors.CYAN)
-                        else:
-                            colored_print(f"   📄 No comments in this play", Colors.CYAN)
-                        colored_print(f"   📝 No heroes found in comments either", Colors.RED)
-                        colored_print(f"   🔗 BGG Play Link: https://boardgamegeek.com/play/{play_id}", Colors.BLUE)
-                    
-                    skipped_plays['meaningless_names'].append({
-                        'play_id': play_id,
-                        'play_date': play_date,
-                        'userid': userid,
-                        'comments': comments,
-                        'original_color': color,
-                        'cleaned_name': cleaned_name,
-                        'player_xml': player.attrib,
-                        'full_xml': ET.tostring(player, encoding='unicode', method='xml'),
-                        'reason': 'Meaningless name after cleaning, no heroes in comments'
-                    })
-                    continue
+                
+                # Don't skip this record since we found heroes
+                continue
+            else:
+                # No heroes found in comments either, skip as meaningless
+                if TERMINAL_DEBUG:
+                    colored_print(f"\n🚫 SKIPPED - Meaningless Name:", Colors.MAGENTA)
+                    colored_print(f"   Play ID: {play_id} | Date: {play_date}", Colors.CYAN)
+                    colored_print(f"   Original Color: '{color}'", Colors.YELLOW)
+                    colored_print(f"   Cleaned Name: '{cleaned_name}'", Colors.YELLOW)
+                    colored_print(f"   Raw Player XML:", Colors.YELLOW)
+                    player_xml_str = ET.tostring(player, encoding='unicode', method='xml')
+                    colored_print(f"   {player_xml_str}", Colors.YELLOW)
+                    if comments:
+                        colored_print(f"   📄 FULL COMMENTS:", Colors.CYAN)
+                        colored_print(f"   {comments}", Colors.CYAN)
+                    else:
+                        colored_print(f"   📄 No comments in this play", Colors.CYAN)
+                    colored_print(f"   📝 No heroes found in comments either", Colors.RED)
+                    colored_print(f"   🔗 BGG Play Link: https://boardgamegeek.com/play/{play_id}", Colors.BLUE)
+                
+                skipped_plays['meaningless_names'].append({
+                    'play_id': play_id,
+                    'play_date': play_date,
+                    'userid': userid,
+                    'comments': comments,
+                    'original_color': color,
+                    'cleaned_name': cleaned_name,
+                    'player_xml': player.attrib,
+                    'full_xml': ET.tostring(player, encoding='unicode', method='xml'),
+                    'reason': 'Meaningless name after cleaning, no heroes in comments'
+                })
+                continue
             
             # Use cached translation if available
             if cleaned_name in translation_cache:
@@ -1487,6 +1624,46 @@ def parse_heroes_from_comments(comments, play_id=None):
         
     return unique_heroes
 
+def lookup_user_id_from_username(username):
+    """Convert username to user ID using BGG API"""
+    try:
+        url = f"https://boardgamegeek.com/xmlapi2/user?name={username}"
+        headers = {"User-Agent": "Mozilla/5.0"}
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+        
+        root = ET.fromstring(response.content)
+        user_id = root.get('id')
+        
+        if user_id:
+            return user_id
+        else:
+            colored_print(f"⚠️  Could not find user ID for username: {username}", Colors.YELLOW)
+            return None
+            
+    except Exception as e:
+        colored_print(f"❌ Error looking up user {username}: {e}", Colors.RED)
+        return None
+
+def fetch_recent_month_users(year=2025, month=6, max_users=MAX_USERS):
+    """Fetch active users from recent month's play statistics using BGG XML API"""
+    user_ids, usernames = fetch_monthly_play_stats(year, month)
+    
+    # Since the new approach returns user IDs directly, we don't need username conversion
+    all_user_ids = list(set(user_ids))  # Remove any duplicates
+    
+    if not all_user_ids:
+        colored_print("❌ No users found via XML API, trying fallback method", Colors.YELLOW)
+        return []
+    
+    # Limit to reasonable number to avoid overwhelming BGG
+    if len(all_user_ids) > max_users:
+        colored_print(f"📊 Limiting analysis to first {max_users} users (found {len(all_user_ids)} total)", Colors.CYAN)
+        colored_print(f"💡 Use --max-users to adjust this limit", Colors.CYAN)
+        all_user_ids = all_user_ids[:max_users]
+    
+    colored_print(f"🎯 Selected {len(all_user_ids)} users for analysis", Colors.GREEN)
+    return all_user_ids
 def parse_arguments():
     """Parse command line arguments"""
     parser = argparse.ArgumentParser(
@@ -1506,6 +1683,23 @@ def parse_arguments():
         help='Delay between API calls in seconds'
     )
     parser.add_argument(
+        '--max-users', '-u',
+        type=int,
+        default=MAX_USERS,
+        help='Maximum number of users to analyze'
+    )
+    parser.add_argument(
+        '--max-api-calls',
+        type=int,
+        default=MAX_TOTAL_API_CALLS,
+        help='Maximum total API calls per run (safety limit)'
+    )
+    parser.add_argument(
+        '--conservative',
+        action='store_true',
+        help='Use conservative settings (fewer users, plays, and longer delays)'
+    )
+    parser.add_argument(
         '--debug', '-v',
         action='store_true',
         help='Enable verbose debug output'
@@ -1517,147 +1711,340 @@ def parse_arguments():
     )
     return parser.parse_args()
 
-# Parse command line arguments
-args = parse_arguments()
-
-# Update configuration based on arguments
-PLAY_LIMIT = args.plays
-API_DELAY = args.delay
-TERMINAL_DEBUG = args.debug and not args.quiet
-
-# Display configuration
-if not args.quiet:
-    colored_print("=" * 60, Colors.CYAN)
-    colored_print("🎯 MARVEL CHAMPIONS BGG ANALYZER", Colors.BOLD)
-    colored_print("=" * 60, Colors.CYAN)
-    colored_print(f"📊 Configuration:", Colors.CYAN)
-    colored_print(f"   • Max plays per user: {PLAY_LIMIT}", Colors.CYAN)
-    colored_print(f"   • API delay: {API_DELAY}s", Colors.CYAN)
-    colored_print(f"   • Debug mode: {'ON' if TERMINAL_DEBUG else 'OFF'}", Colors.CYAN)
-    colored_print(f"   • Estimated time: ~{PLAY_LIMIT/100 * API_DELAY:.1f}s for API calls", Colors.CYAN)
-    colored_print("=" * 60, Colors.CYAN)
-
-# First, get some recent plays to find active users
-colored_print("🔍 Fetching recent plays to find active users...", Colors.CYAN)
-root = fetch_plays_xml(page=1)
-
-userids = extract_usernames_from_plays(root)
-colored_print(f"👥 Found {len(userids)} users in recent plays", Colors.GREEN)
-colored_print(f"First 10 user IDs: {userids[:10]}", Colors.CYAN)
-
-if userids:
-    first_userid = userids[0]
-    colored_print(f"\n🎯 Analyzing plays for first user ID: {first_userid}", Colors.BOLD)
+def main():
+    """Main execution function for the BGG analyzer"""
+    global PLAY_LIMIT, API_DELAY, TERMINAL_DEBUG, MAX_USERS, MAX_TOTAL_API_CALLS, api_call_count
     
-    # Fetch up to PLAY_LIMIT plays for the first user using direct API
-    user_plays = fetch_user_plays_by_userid_direct(first_userid, max_plays=PLAY_LIMIT)
+    # Parse command line arguments
+    args = parse_arguments()
+
+    # Update configuration based on arguments
+    PLAY_LIMIT = args.plays
+    API_DELAY = args.delay
+    MAX_USERS = args.max_users
+    MAX_TOTAL_API_CALLS = args.max_api_calls
+    TERMINAL_DEBUG = args.debug and not args.quiet
     
-    if user_plays:
-        # Analyze hero names from Team/Color fields
-        hero_results, skipped_plays, extraction_stats = extract_hero_names_from_plays(user_plays)
-        colored_print(f"\n🎯 Hero usage analysis for user {first_userid} (with official matching):", Colors.BOLD)
+    # Apply conservative settings if requested
+    if args.conservative:
+        PLAY_LIMIT = min(PLAY_LIMIT, 100)  # Limit to 100 plays per user
+        MAX_USERS = min(MAX_USERS, 10)     # Limit to 10 users
+        API_DELAY = max(API_DELAY, 2.0)    # At least 2 second delay
+        MAX_TOTAL_API_CALLS = min(MAX_TOTAL_API_CALLS, 50)  # Limit total calls
+        colored_print("🐌 Conservative mode enabled - using reduced limits for API calls", Colors.YELLOW)
+    
+    # Reset API call counter
+    api_call_count = 0
+
+    # Display configuration
+    if not args.quiet:
+        colored_print("=" * 60, Colors.CYAN)
+        colored_print("🎯 MARVEL CHAMPIONS BGG ANALYZER - MONTHLY FOCUS", Colors.BOLD)
+        colored_print("=" * 60, Colors.CYAN)
+        colored_print(f"📊 Configuration:", Colors.CYAN)
+        colored_print(f"   • Max users to analyze: {MAX_USERS}", Colors.CYAN)
+        colored_print(f"   • Max plays per user: {PLAY_LIMIT}", Colors.CYAN)
+        colored_print(f"   • API delay: {API_DELAY}s", Colors.CYAN)
+        colored_print(f"   • Max total API calls: {MAX_TOTAL_API_CALLS}", Colors.CYAN)
+        colored_print(f"   • Debug mode: {'ON' if TERMINAL_DEBUG else 'OFF'}", Colors.CYAN)
+        colored_print(f"   • Conservative mode: {'ON' if args.conservative else 'OFF'}", Colors.CYAN)
+        colored_print(f"   • Focus: June 2025 active users", Colors.CYAN)
+        colored_print("=" * 60, Colors.CYAN)
+
+    # Get users who were active in June 2025 (current month)
+    colored_print("🔍 Fetching users active in June 2025...", Colors.CYAN)
+    monthly_user_ids = fetch_recent_month_users(year=2025, month=6, max_users=MAX_USERS)
+
+    if monthly_user_ids:
+        colored_print(f"👥 Found {len(monthly_user_ids)} active users from June 2025", Colors.GREEN)
+        colored_print(f"📋 User IDs: {monthly_user_ids[:10]}{'...' if len(monthly_user_ids) > 10 else ''}", Colors.CYAN)
         
-        # Print top 30 hero results with enhanced AH tracking
-        for i, hero in enumerate(hero_results[:30]):
-            altered_info = ""
-            if hero.get('altered_plays', 0) > 0:
-                altered_info = f" (🔄 {hero['altered_plays']} AH)"
-            print(f"{i+1:2d}. {hero['hero_name']:<20} {hero['play_count']:>3} plays [{hero['status']}]{altered_info}")
+        # Analyze hero usage across all monthly users
+        hero_results, skipped_plays, stats = analyze_multiple_users_hero_usage(
+            monthly_user_ids, 
+            max_plays_per_user=min(PLAY_LIMIT, 300)  # Reasonable limit per user
+        )
         
-        # Show comprehensive summary statistics with colors including all categories
-        total_plays = sum(hero['play_count'] for hero in hero_results)
-        official_plays = sum(hero['play_count'] for hero in hero_results if 'OFFICIAL' in hero['status'])
-        translated_plays = sum(hero['play_count'] for hero in hero_results if 'TRANSLATED' in hero['status'])
-        unmatched_plays = sum(hero['play_count'] for hero in hero_results if 'UNMATCHED' in hero['status'])
-        altered_plays = sum(hero['play_count'] for hero in hero_results if 'ALTERED_HERO' in hero['status'])
-        
-        # Calculate skipped player records (not plays) totals
-        total_skipped_player_records = sum(len(category_list) for category_list in [
-            skipped_plays.get('no_players', []),
-            skipped_plays.get('empty_color', []), 
-            skipped_plays.get('meaningless_names', []),
-            skipped_plays.get('villains', []),
-            skipped_plays.get('translation_errors', [])
-        ])
-        
-        # Get individual skipped categories (these are player records, not plays)
-        skipped_no_players = len(skipped_plays.get('no_players', []))
-        skipped_empty_color = len(skipped_plays.get('empty_color', []))
-        skipped_meaningless = len(skipped_plays.get('meaningless_names', []))
-        skipped_villains = len(skipped_plays.get('villains', []))
-        skipped_translation_errors = len(skipped_plays.get('translation_errors', []))
-        
-        # Total BGG plays from initial fetch
-        total_bgg_plays = len(user_plays)
-        
-        # Use the accurate statistics from the extraction function
-        plays_with_hero_data = extraction_stats['plays_with_players']
-        plays_without_hero_data = total_bgg_plays - plays_with_hero_data
-        
-        colored_print(f"\n📊 BGG Marvel Champions Analysis Summary:", Colors.BOLD)
-        colored_print(f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", Colors.CYAN)
-        
-        # Calculate key totals
-        total_player_records = extraction_stats['total_players']
-        successful_player_records = extraction_stats['total_players_with_color']
-        
-        # Main baseline metrics
-        colored_print(f"📋 BASELINE DATA:", Colors.BOLD)
-        colored_print(f"   • Total BGG plays analyzed: {total_bgg_plays}", Colors.CYAN)
-        colored_print(f"   • Total player records found: {total_player_records}", Colors.CYAN)
-        
-        # BGG Play-level success rates (out of {total_bgg_plays} plays)
-        colored_print(f"\n🎯 BGG PLAY SUCCESS RATES (of {total_bgg_plays} plays):", Colors.BOLD)
-        colored_print(f"   • Plays with hero data extracted: {plays_with_hero_data} ({plays_with_hero_data/total_bgg_plays*100:.1f}%)" if total_bgg_plays > 0 else "   • Plays with hero data: 0 (0.0%)", Colors.GREEN)
-        colored_print(f"   • Plays with no usable data: {plays_without_hero_data} ({plays_without_hero_data/total_bgg_plays*100:.1f}%)" if total_bgg_plays > 0 else "   • Plays with no data: 0 (0.0%)", Colors.YELLOW)
-        
-        # Player Record-level success rates (out of {total_player_records} player records)
-        colored_print(f"\n👥 PLAYER RECORD SUCCESS RATES (of {total_player_records} player records):", Colors.BOLD)
-        colored_print(f"   • Successfully resolved hero data: {successful_player_records} ({successful_player_records/total_player_records*100:.1f}%)" if total_player_records > 0 else "   • Successful resolutions: 0 (0.0%)", Colors.GREEN)
-        
-        # Breakdown of unsuccessful player records
-        skipped_player_records = total_player_records - successful_player_records
-        colored_print(f"   • Player records skipped: {skipped_player_records} ({skipped_player_records/total_player_records*100:.1f}%)" if total_player_records > 0 else "   • Records skipped: 0 (0.0%)", Colors.YELLOW)
-        
-        # Detailed skip reasons (of skipped player records)
-        if skipped_player_records > 0:
-            colored_print(f"     ├─ Empty color field: {skipped_empty_color} ({skipped_empty_color/total_player_records*100:.1f}% of all records)", Colors.MAGENTA)
-            colored_print(f"     ├─ Meaningless names: {skipped_meaningless} ({skipped_meaningless/total_player_records*100:.1f}% of all records)", Colors.MAGENTA)
-            colored_print(f"     ├─ Villains filtered: {skipped_villains} ({skipped_villains/total_player_records*100:.1f}% of all records)", Colors.MAGENTA)
-            colored_print(f"     └─ Translation errors: {skipped_translation_errors} ({skipped_translation_errors/total_player_records*100:.1f}% of all records)", Colors.MAGENTA)
-        
-        # Additional: Entire plays with no player data (separate category)
-        colored_print(f"   • Entire plays with no player element: {skipped_no_players} ({skipped_no_players/total_bgg_plays*100:.1f}% of BGG plays)" if total_bgg_plays > 0 else "   • No player element: 0 (0.0%)", Colors.MAGENTA)
-        
-        # Hero extraction quality (of successfully extracted heroes)
-        colored_print(f"\n✅ HERO EXTRACTION QUALITY (of {total_plays} hero plays):", Colors.BOLD)
-        colored_print(f"   • Official matches: {official_plays} ({official_plays/total_plays*100:.1f}%)" if total_plays > 0 else "   • Official matches: 0 (0.0%)", Colors.GREEN)
-        colored_print(f"   • Translated names: {translated_plays} ({translated_plays/total_plays*100:.1f}%)" if total_plays > 0 else "   • Translated: 0 (0.0%)", Colors.YELLOW)
-        colored_print(f"   • Altered Heroes (AH): {altered_plays} ({altered_plays/total_plays*100:.1f}%)" if total_plays > 0 else "   • Altered Heroes: 0 (0.0%)", Colors.BLUE)
-        colored_print(f"   • Unmatched heroes: {unmatched_plays} ({unmatched_plays/total_plays*100:.1f}%)" if total_plays > 0 else "   • Unmatched: 0 (0.0%)", Colors.RED)
-        
-        # Key performance metrics
-        hero_processing_success_rate = (official_plays + translated_plays + altered_plays) / total_plays * 100 if total_plays > 0 else 0
-        
-        # Count plays recovered from comments (look for FROM_COMMENTS in hero statuses)
-        comment_recovered_plays = 0
-        for hero_entry in hero_results:
-            if 'FROM_COMMENTS' in hero_entry.get('status', ''):
-                comment_recovered_plays += hero_entry.get('play_count', 0)
-        
-        colored_print(f"\n📈 KEY PERFORMANCE METRICS:", Colors.BOLD)
-        colored_print(f"   • Overall hero processing success: {hero_processing_success_rate:.1f}% (excludes unmatched)", Colors.CYAN)
-        colored_print(f"   • Comment-based recovery: {comment_recovered_plays} hero plays recovered from comments", Colors.CYAN)
-        colored_print(f"   • Average hero plays per BGG play: {total_plays/total_bgg_plays:.1f}" if total_bgg_plays > 0 else "   • Average hero plays per play: 0.0", Colors.CYAN)
-        
-        colored_print(f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", Colors.CYAN)
-        
-        # Also show comment-based analysis for comparison
-        comment_results = extract_hero_mentions_from_plays(user_plays)
-        colored_print(f"\n💬 Comment-based analysis for comparison:", Colors.BOLD)
-        for i, hero in enumerate(comment_results[:5]):
-            print(f"{i+1}. {hero['hero_name']:<15} {hero['mention_count']:>3} mentions")
+        # Ensure summary variables are always defined
+        total_plays = 0
+        official_plays = 0
+        translated_plays = 0
+        unmatched_plays = 0
+        altered_plays = 0
+
+        if hero_results:
+            colored_print(f"\n🎯 June 2025 Hero Usage Analysis (Aggregated from {stats['users_with_plays']} active users):", Colors.BOLD)
+            colored_print("=" * 80, Colors.CYAN)
+            # Print top 30 hero results with user count information
+            for i, hero in enumerate(hero_results[:30]):
+                altered_info = ""
+                if hero.get('altered_plays', 0) > 0:
+                    altered_info = f" (🔄 {hero['altered_plays']} AH)"
+                user_info = f" [{hero['user_count']} users]"
+                print(f"{i+1:2d}. {hero['hero_name']:<20} {hero['play_count']:>3} plays{user_info} [{hero['status']}]" + altered_info)
+            # Show comprehensive summary statistics
+            total_plays = sum(hero['play_count'] for hero in hero_results)
+            official_plays = sum(hero['play_count'] for hero in hero_results if 'OFFICIAL' in hero['status'])
+            translated_plays = sum(hero['play_count'] for hero in hero_results if 'TRANSLATED' in hero['status'])
+            unmatched_plays = sum(hero['play_count'] for hero in hero_results if 'UNMATCHED' in hero['status'])
+            altered_plays = sum(hero['play_count'] for hero in hero_results if 'ALTERED_HERO' in hero['status'])
+            
+            # Monthly focus metrics
+            colored_print(f"� MONTHLY FOCUS (June 2025):", Colors.BOLD)
+            colored_print(f"   • Active users analyzed: {stats['users_with_plays']}/{stats['users_analyzed']}", Colors.CYAN)
+            colored_print(f"   • Total plays from active users: {stats['total_plays']}", Colors.CYAN)
+            colored_print(f"   • Total player records: {stats['total_players']}", Colors.CYAN)
+            colored_print(f"   • Unique heroes played: {len(hero_results)}", Colors.CYAN)
+            
+            # Play-level success rates
+            colored_print(f"\n🎯 PLAY ANALYSIS SUCCESS RATES:", Colors.BOLD)
+            colored_print(f"   • Plays with hero data: {stats['plays_with_players']} ({stats['plays_with_players']/stats['total_plays']*100:.1f}%)" if stats['total_plays'] > 0 else "   • Plays with hero data: 0 (0.0%)", Colors.GREEN)
+            colored_print(f"   • Player records with hero data: {stats['total_players_with_color']} ({stats['total_players_with_color']/stats['total_players']*100:.1f}%)" if stats['total_players'] > 0 else "   • Player records with data: 0 (0.0%)", Colors.GREEN)
+            
+            # Hero extraction quality
+            colored_print(f"\n✅ HERO EXTRACTION QUALITY (of {total_plays} hero plays):", Colors.BOLD)
+            colored_print(f"   • Official matches: {official_plays} ({official_plays/total_plays*100:.1f}%)" if total_plays > 0 else "   • Official matches: 0 (0.0%)", Colors.GREEN)
+            colored_print(f"   • Translated names: {translated_plays} ({translated_plays/total_plays*100:.1f}%)" if total_plays > 0 else "   • Translated: 0 (0.0%)", Colors.YELLOW)
+            colored_print(f"   • Altered Heroes (AH): {altered_plays} ({altered_plays/total_plays*100:.1f}%)" if total_plays > 0 else "   • Altered Heroes: 0 (0.0%)", Colors.BLUE)
+            colored_print(f"   • Unmatched heroes: {unmatched_plays} ({unmatched_plays/total_plays*100:.1f}%)" if total_plays > 0 else "   • Unmatched: 0 (0.0%)", Colors.RED)
+            
+            # Top 10 most popular heroes with user distribution
+            colored_print(f"\n🏆 TOP 10 HEROES (June 2025):", Colors.BOLD)
+            for i, hero in enumerate(hero_results[:10]):
+                popularity = f"{hero['play_count']} plays across {hero['user_count']} users"
+                avg_plays = hero['play_count'] / hero['user_count'] if hero['user_count'] > 0 else 0
+                colored_print(f"   {i+1:2d}. {hero['hero_name']:<20} - {popularity} (avg: {avg_plays:.1f} plays/user)", Colors.CYAN)
+            
+            colored_print(f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", Colors.CYAN)
+            
+            # Display API usage statistics
+            colored_print(f"\n📊 API USAGE STATISTICS:", Colors.BOLD)
+            colored_print(f"   • Total API calls made: {api_call_count}", Colors.CYAN)
+            colored_print(f"   • API call limit: {MAX_TOTAL_API_CALLS}", Colors.CYAN)
+            colored_print(f"   • API usage: {api_call_count/MAX_TOTAL_API_CALLS*100:.1f}%", Colors.GREEN if api_call_count < MAX_TOTAL_API_CALLS * 0.8 else Colors.YELLOW)
+            colored_print(f"   • Average delay per call: {API_DELAY}s", Colors.CYAN)
+            colored_print(f"   • Total time in API delays: ~{api_call_count * API_DELAY:.1f}s", Colors.CYAN)
+            
+        else:
+            colored_print("❌ No hero data found for monthly users", Colors.RED)
+            
+            # Display API usage statistics even when no data found
+            colored_print(f"\n📊 API USAGE STATISTICS:", Colors.BOLD)
+            colored_print(f"   • Total API calls made: {api_call_count}", Colors.CYAN)
+            colored_print(f"   • API call limit: {MAX_TOTAL_API_CALLS}", Colors.CYAN)
+            colored_print(f"   • API usage: {api_call_count/MAX_TOTAL_API_CALLS*100:.1f}%", Colors.GREEN if api_call_count < MAX_TOTAL_API_CALLS * 0.8 else Colors.YELLOW)
     else:
-        colored_print(f"❌ No plays found for user {first_userid}", Colors.RED)
-else:
-    print("No users found in recent plays")
+        colored_print("❌ No active users found for June 2025, falling back to general recent plays", Colors.YELLOW)
+        
+        # Fallback to original approach
+        root = fetch_plays_xml(page=1)
+        userids = extract_usernames_from_plays(root)
+        
+        if userids:
+            first_userid = userids[0]
+            colored_print(f"\n🎯 Analyzing plays for recent user ID: {first_userid}", Colors.BOLD)
+            
+            # Fetch up to PLAY_LIMIT plays for the first user using direct API
+            user_plays = fetch_user_plays_by_userid_direct(first_userid, max_plays=PLAY_LIMIT)
+            
+            if user_plays:
+                # Analyze hero names from Team/Color fields
+                hero_results, skipped_plays, extraction_stats = extract_hero_names_from_plays(user_plays)
+                colored_print(f"\n🎯 Hero usage analysis for user {first_userid}:", Colors.BOLD)
+                
+                # Print top 30 hero results
+                for i, hero in enumerate(hero_results[:30]):
+                    altered_info = ""
+                    if hero.get('altered_plays', 0) > 0:
+                        altered_info = f" (🔄 {hero['altered_plays']} AH)"
+                    print(f"{i+1:2d}. {hero['hero_name']:<20} {hero['play_count']:>3} plays [{hero['status']}]" + altered_info)
+            else:
+                colored_print(f"❌ No plays found for user {first_userid}", Colors.RED)
+        else:
+            print("❌ No users found in recent plays")
+    
+    # Final API usage summary
+    if not args.quiet:
+        colored_print(f"\n🏁 FINAL API USAGE SUMMARY:", Colors.BOLD)
+        colored_print(f"   • Total API calls made: {api_call_count}/{MAX_TOTAL_API_CALLS}", Colors.CYAN)
+        if api_call_count >= MAX_TOTAL_API_CALLS:
+            colored_print(f"   • ⚠️  API limit reached - analysis may be incomplete", Colors.YELLOW)
+        elif api_call_count >= MAX_TOTAL_API_CALLS * 0.8:
+            colored_print(f"   • 📈 High API usage - consider using --conservative mode", Colors.YELLOW)
+        else:
+            colored_print(f"   • ✅ API usage within reasonable limits", Colors.GREEN)
+        colored_print(f"   • Total time spent in API delays: ~{api_call_count * API_DELAY:.1f}s", Colors.CYAN)
+        
+        # Usage tips
+        colored_print(f"\n💡 USAGE TIPS:", Colors.BOLD)
+        colored_print(f"   • Use --conservative for minimal API usage", Colors.CYAN)
+        colored_print(f"   • Use --max-users to limit number of users analyzed", Colors.CYAN)
+        colored_print(f"   • Use --plays to limit plays per user", Colors.CYAN)
+        colored_print(f"   • Use --delay to increase delays between API calls", Colors.CYAN)
+
+def analyze_multiple_users_hero_usage(user_ids, max_plays_per_user=200):
+    """Analyze hero usage across multiple users and aggregate results"""
+    all_hero_results = []
+    all_skipped_plays = {
+        'no_players': [],
+        'empty_color': [],
+        'meaningless_names': [],
+        'villains': [],
+        'scenarios': [],
+        'translation_errors': []
+    }
+    total_stats = {
+        'total_plays': 0,
+        'plays_with_players': 0,
+        'total_players': 0,
+        'total_players_with_color': 0,
+        'users_analyzed': 0,
+        'users_with_plays': 0
+    }
+    
+    colored_print(f"\n🎯 Analyzing hero usage for {len(user_ids)} users from recent plays", Colors.BOLD)
+    colored_print(f"📊 Max plays per user: {max_plays_per_user}", Colors.CYAN)
+    
+    # Instead of trying to fetch per-user (which doesn't work), fetch recent plays and group by user
+    colored_print("🔍 Fetching recent Marvel Champions plays for all users...", Colors.CYAN)
+    
+    all_recent_plays = []
+    pages_to_fetch = 5  # Fetch enough pages to get a good sample
+    
+    try:
+        for page in range(1, pages_to_fetch + 1):
+            url = f"https://boardgamegeek.com/xmlapi2/plays?id=285774&page={page}"
+            response = safe_api_call(url)
+            if response is None:
+                colored_print(f"❌ Failed to fetch page {page}", Colors.RED)
+                break
+            
+            root = ET.fromstring(response.content)
+            plays = root.findall("play")
+            
+            if not plays:
+                colored_print(f"📄 No more plays found on page {page}", Colors.YELLOW)
+                break
+                
+            all_recent_plays.extend(plays)
+            colored_print(f"✅ Fetched page {page}: {len(plays)} plays (total: {len(all_recent_plays)})", Colors.GREEN)
+            
+        colored_print(f"📊 Total recent plays fetched: {len(all_recent_plays)}", Colors.GREEN)
+        
+        # Group plays by user ID
+        plays_by_user = {}
+        for play in all_recent_plays:
+            userid = play.get('userid')
+            if userid:
+                if userid not in plays_by_user:
+                    plays_by_user[userid] = []
+                plays_by_user[userid].append(play)
+        
+        colored_print(f"👥 Found plays from {len(plays_by_user)} unique users", Colors.GREEN)
+        
+        # Filter to only analyze the requested users (if they have plays)
+        users_with_data = []
+        for user_id in user_ids:
+            if user_id in plays_by_user:
+                users_with_data.append(user_id)
+            else:
+                if TERMINAL_DEBUG:
+                    colored_print(f"⚠️  User {user_id} not found in recent plays", Colors.YELLOW)
+        
+        colored_print(f"🎯 {len(users_with_data)} of {len(user_ids)} requested users have recent plays", Colors.CYAN)
+        
+        # If no requested users have recent plays, analyze the most active users instead
+        if not users_with_data:
+            colored_print("📈 No requested users found in recent plays, analyzing most active users instead", Colors.YELLOW)
+            # Sort users by number of plays, take top users
+            sorted_users = sorted(plays_by_user.items(), key=lambda x: len(x[1]), reverse=True)
+            users_with_data = [user_id for user_id, plays in sorted_users[:len(user_ids)]]
+            colored_print(f"🎯 Analyzing top {len(users_with_data)} most active users instead", Colors.CYAN)
+        
+        # Track aggregated hero counts across all users
+        aggregated_hero_counts = {}
+        
+        for i, user_id in enumerate(users_with_data):
+            try:
+                user_plays = plays_by_user[user_id]
+                
+                # Limit plays per user
+                if len(user_plays) > max_plays_per_user:
+                    user_plays = user_plays[:max_plays_per_user]
+                    colored_print(f"👤 Analyzing user {i+1}/{len(users_with_data)}: {user_id} ({len(user_plays)} plays, limited from {len(plays_by_user[user_id])})", Colors.CYAN)
+                else:
+                    colored_print(f"👤 Analyzing user {i+1}/{len(users_with_data)}: {user_id} ({len(user_plays)} plays)", Colors.CYAN)
+                
+                if not user_plays:
+                    colored_print(f"⚠️  No plays found for user {user_id}", Colors.YELLOW)
+                    continue
+                    
+                total_stats['users_with_plays'] += 1
+                
+                # Analyze hero usage for this user
+                hero_results, skipped_plays, user_stats = extract_hero_names_from_plays(user_plays)
+                
+                # Aggregate statistics
+                total_stats['total_plays'] += user_stats['total_plays']
+                total_stats['plays_with_players'] += user_stats['plays_with_players']
+                total_stats['total_players'] += user_stats['total_players']
+                total_stats['total_players_with_color'] += user_stats['total_players_with_color']
+                
+                # Aggregate skipped plays
+                for category, plays in skipped_plays.items():
+                    all_skipped_plays[category].extend(plays)
+                
+                # Aggregate hero counts
+                for hero_data in hero_results:
+                    hero_name = hero_data['hero_name']
+                    play_count = hero_data['play_count']
+                    status = hero_data['status']
+                    is_altered = hero_data.get('is_altered', False)
+                    
+                    if hero_name in aggregated_hero_counts:
+                        aggregated_hero_counts[hero_name]['count'] += play_count
+                        aggregated_hero_counts[hero_name]['users'].add(user_id)
+                        aggregated_hero_counts[hero_name]['status'].update(status.split('|'))
+                        if is_altered:
+                            aggregated_hero_counts[hero_name]['altered_plays'] += play_count
+                    else:
+                        aggregated_hero_counts[hero_name] = {
+                            'count': play_count,
+                            'users': {user_id},
+                            'status': set(status.split('|')),
+                            'altered_plays': play_count if is_altered else 0,
+                            'is_altered': is_altered
+                        }
+                
+                colored_print(f"✅ User {user_id}: {len(hero_results)} unique heroes, {user_stats['total_plays']} plays", Colors.GREEN)
+                
+            except Exception as e:
+                colored_print(f"❌ Error analyzing user {user_id}: {e}", Colors.RED)
+                continue
+        
+        total_stats['users_analyzed'] = len(users_with_data)
+        
+        # Convert aggregated results to final format
+        final_results = []
+        for hero_name, data in aggregated_hero_counts.items():
+            final_results.append({
+                'hero_name': hero_name,
+                'play_count': data['count'],
+                'user_count': len(data['users']),
+                'users': list(data['users']),
+                'status': '|'.join(sorted(data['status'])),
+                'altered_plays': data['altered_plays'],
+                'is_altered': data['is_altered']
+            })
+        
+        # Sort by play count descending
+        final_results.sort(key=lambda x: x['play_count'], reverse=True)
+        
+        return final_results, all_skipped_plays, total_stats
+        
+    except Exception as e:
+        colored_print(f"❌ Error in analyze_multiple_users_hero_usage: {e}", Colors.RED)
+        return [], all_skipped_plays, total_stats
+
+if __name__ == "__main__":
+    main()

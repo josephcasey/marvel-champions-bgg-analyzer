@@ -4,20 +4,25 @@ A comprehensive Python tool for analyzing Marvel Champions: The Card Game play d
 
 ## 🎯 Features
 
+- **Monthly Play Analysis**: Focus on analyzing hero usage for players active in specific months
 - **Multi-language Support**: Automatically translates hero names from Spanish and Chinese to English
 - **Hero Name Disambiguation**: Uses fuzzy matching and official hero lists for accurate identification
 - **Comprehensive Analysis**: Tracks successful matches, translations, and skipped plays with detailed reasons
 - **Color-coded Output**: Easy-to-read terminal output with status indicators
 - **Data Quality Insights**: Detailed XML debugging information for troubleshooting BGG data issues
 - **Villain/Scenario Filtering**: Automatically excludes non-hero entries from statistics
+- **Multi-User Aggregation**: Analyzes hero usage across multiple users from recent months
 
 ## 📊 What It Analyzes
 
 ### Hero Usage Statistics
-- Individual hero play counts
+- **Monthly Focus**: Analyzes players who were active in recent months (default: May 2025)
+- Individual hero play counts across multiple users
+- User distribution metrics (how many users played each hero)
 - Translation success rates
 - Official hero list matching rates
 - Geographic distribution of play styles (via language detection)
+- Aggregated statistics from multiple monthly active users
 
 ### Skipped Plays Analysis
 - Plays with missing player data
@@ -167,6 +172,25 @@ This project is open source. Please respect BoardGameGeek's API terms of service
 
 ## 📈 Recent Improvements
 
+### Monthly Focus Analysis Enhancement (Jun 25, 2025) (Latest)
+- 📅 **Monthly User Analysis** - Enhanced script to focus on analyzing hero usage for players active in specific months (default: May 2025)
+- 👥 **Multi-User Aggregation** - Implemented comprehensive analysis across multiple users from recent months instead of single-user analysis
+- 🔍 **BGG Play Stats Integration** - Added functionality to fetch user lists from BoardGameGeek monthly play statistics pages
+- 📊 **Enhanced Reporting** - Improved summary statistics include user distribution metrics and cross-user hero popularity
+- 🛡️ **Graceful Fallback** - Falls back to recent plays analysis when monthly data is unavailable
+- 🎯 **Targeted Analysis** - Provides more relevant hero usage trends by focusing on recently active community members
+- ⚡ **Performance Optimized** - Configurable user limits and play limits per user for efficient large-scale analysis
+
+### Agent Rules Integration & Deployment Automation (Jun 21, 2025) - `43dc7b5`
+- 🔧 **Submodule Structure** - Integrated `agent-rules/` as git submodule linked to steipete/agent-rules repository
+- 🔗 **Project Rules Access** - Created root-level `project-rules` symlink pointing to `agent-rules/project-rules/` for seamless access
+- 📋 **Workflow Rules** - All deployment and testing workflows now defined in agent-rules markdown files for consistency
+- 🚀 **Command Pattern** - Implemented `/deploy` and `/test` commands triggering automated workflows via agent rules integration
+- 📊 **Enhanced Scripts** - Updated `scripts/deploy-changes-enhanced.sh` and `scripts/test.sh` to work with agent rules coordination
+- 📋 **Coordinated Updates** - `/test` and `/deploy` commands now handle both main repository and agent-rules submodule changes
+- ⚡ **Upstream Sync Capability** - Can pull improvements from steipete/agent-rules while preserving custom project rules
+- 📊 **Comprehensive Reporting** - Enhanced deployment verification includes submodule status and git coordination details
+
 ### Deployment Script Syntax Fix (Jun 24, 2025) (Latest)
 - 🔧 **Shell Syntax Error Fix** - Removed extra `fi` statement causing syntax error in deployment script line 415
 - ✅ **Enhanced Script Reliability** - Fixed bash script structure to prevent deployment interruptions
@@ -225,6 +249,15 @@ This project is open source. Please respect BoardGameGeek's API terms of service
 - 📋 **Coordinated Updates** - `/test` and `/deploy` commands now handle both main repository and agent-rules submodule changes
 - ⚡ **Upstream Sync Capability** - Can pull improvements from steipete/agent-rules while preserving custom project rules
 - 📊 **Comprehensive Reporting** - Enhanced deployment verification includes submodule status and git coordination details
+
+### BGG API Data Integrity Fix (Jun 27, 2025) (Latest)
+- 🔧 **Fixed "too neat" data issue** - Resolved critical BGG API bug where userid parameter was being ignored
+- 📊 **Realistic hero statistics** - Now shows authentic, varied hero play counts instead of uniform artificial data
+- 🎯 **Proper user isolation** - Each user's play data is now independently fetched and aggregated
+- 🔄 **Client-side data grouping** - Implemented workaround for BGG API limitation by fetching recent plays and grouping by user ID
+- ✅ **Data authenticity verified** - Hero usage now shows natural distributions (e.g., Hulk: 11 plays, She-Hulk: 10 plays, etc.)
+- 🚫 **Eliminated data sharing** - Fixed bug where all users appeared to have identical play statistics
+- 📈 **Improved analysis accuracy** - Marvel Champions hero usage statistics now reflect actual player behavior patterns
 
 ### Repository Template Cleanup (Jun 21, 2025) - `eea2d2c`
 - 🧹 **Removed template files** - Deleted unnecessary `FUNDING.yml` and `dependabot.yml` files from `.github/` directory
