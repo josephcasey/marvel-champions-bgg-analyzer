@@ -250,7 +250,7 @@ This project is open source. Please respect BoardGameGeek's API terms of service
 - ⚡ **Upstream Sync Capability** - Can pull improvements from steipete/agent-rules while preserving custom project rules
 - 📊 **Comprehensive Reporting** - Enhanced deployment verification includes submodule status and git coordination details
 
-### BGG API Data Integrity Fix (Jun 27, 2025) (Latest)
+### BGG API Data Integrity Fix (Jun 27, 2025) - `dc023ef` (Latest)
 - 🔧 **Fixed "too neat" data issue** - Resolved critical BGG API bug where userid parameter was being ignored
 - 📊 **Realistic hero statistics** - Now shows authentic, varied hero play counts instead of uniform artificial data
 - 🎯 **Proper user isolation** - Each user's play data is now independently fetched and aggregated
