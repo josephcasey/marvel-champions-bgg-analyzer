@@ -172,7 +172,16 @@ This project is open source. Please respect BoardGameGeek's API terms of service
 
 ## 📈 Recent Improvements
 
-### Monthly Focus Analysis Enhancement (Jun 25, 2025) (Latest)
+### BGG API Data Integrity Fix (Jun 27, 2025) - `dc023ef` (Latest)
+- 🔧 **Fixed "too neat" data issue** - Resolved critical BGG API bug where userid parameter was being ignored
+- 📊 **Realistic hero statistics** - Now shows authentic, varied hero play counts instead of uniform artificial data
+- 🎯 **Proper user isolation** - Each user's play data is now independently fetched and aggregated
+- 🔄 **Client-side data grouping** - Implemented workaround for BGG API limitation by fetching recent plays and grouping by user ID
+- ✅ **Data authenticity verified** - Hero usage now shows natural distributions (e.g., Hulk: 11 plays, She-Hulk: 10 plays, etc.)
+- 🚫 **Eliminated data sharing** - Fixed bug where all users appeared to have identical play statistics
+- 📈 **Improved analysis accuracy** - Marvel Champions hero usage statistics now reflect actual player behavior patterns
+
+### Monthly Focus Analysis Enhancement (Jun 25, 2025) - `126013d`
 - 📅 **Monthly User Analysis** - Enhanced script to focus on analyzing hero usage for players active in specific months (default: May 2025)
 - 👥 **Multi-User Aggregation** - Implemented comprehensive analysis across multiple users from recent months instead of single-user analysis
 - 🔍 **BGG Play Stats Integration** - Added functionality to fetch user lists from BoardGameGeek monthly play statistics pages
@@ -249,15 +258,6 @@ This project is open source. Please respect BoardGameGeek's API terms of service
 - 📋 **Coordinated Updates** - `/test` and `/deploy` commands now handle both main repository and agent-rules submodule changes
 - ⚡ **Upstream Sync Capability** - Can pull improvements from steipete/agent-rules while preserving custom project rules
 - 📊 **Comprehensive Reporting** - Enhanced deployment verification includes submodule status and git coordination details
-
-### BGG API Data Integrity Fix (Jun 27, 2025) - `dc023ef` (Latest)
-- 🔧 **Fixed "too neat" data issue** - Resolved critical BGG API bug where userid parameter was being ignored
-- 📊 **Realistic hero statistics** - Now shows authentic, varied hero play counts instead of uniform artificial data
-- 🎯 **Proper user isolation** - Each user's play data is now independently fetched and aggregated
-- 🔄 **Client-side data grouping** - Implemented workaround for BGG API limitation by fetching recent plays and grouping by user ID
-- ✅ **Data authenticity verified** - Hero usage now shows natural distributions (e.g., Hulk: 11 plays, She-Hulk: 10 plays, etc.)
-- 🚫 **Eliminated data sharing** - Fixed bug where all users appeared to have identical play statistics
-- 📈 **Improved analysis accuracy** - Marvel Champions hero usage statistics now reflect actual player behavior patterns
 
 ### Repository Template Cleanup (Jun 21, 2025) - `eea2d2c`
 - 🧹 **Removed template files** - Deleted unnecessary `FUNDING.yml` and `dependabot.yml` files from `.github/` directory
